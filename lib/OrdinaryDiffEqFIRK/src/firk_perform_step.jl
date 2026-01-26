@@ -36,7 +36,7 @@ function initialize!(integrator, cache::RadauIIA3ConstantCache)
     integrator.fsallast = zero(integrator.fsalfirst)
     integrator.k[1] = integrator.fsalfirst
     integrator.k[2] = integrator.fsallast
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::RadauIIA3Cache)
@@ -54,11 +54,11 @@ function initialize!(integrator, cache::RadauIIA3Cache)
             cache.rtol = reltol^(2 / 3) / 10
             cache.atol = cache.rtol * (abstol / reltol)
         else
-            @.. cache.rtol=reltol^(2 / 3) / 10
-            @.. cache.atol=cache.rtol * (abstol / reltol)
+            @.. cache.rtol = reltol^(2 / 3) / 10
+            @.. cache.atol = cache.rtol * (abstol / reltol)
         end
     end
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::RadauIIA5ConstantCache)
@@ -74,7 +74,7 @@ function initialize!(integrator, cache::RadauIIA5ConstantCache)
     integrator.k[3] = zero(integrator.fsalfirst)
     integrator.k[4] = zero(integrator.fsalfirst)
     integrator.k[5] = zero(integrator.fsalfirst)
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::RadauIIA5Cache)
@@ -93,11 +93,11 @@ function initialize!(integrator, cache::RadauIIA5Cache)
             cache.rtol = reltol^(2 / 3) / 10
             cache.atol = cache.rtol * (abstol / reltol)
         else
-            @.. cache.rtol=reltol^(2 / 3) / 10
-            @.. cache.atol=cache.rtol * (abstol / reltol)
+            @.. cache.rtol = reltol^(2 / 3) / 10
+            @.. cache.atol = cache.rtol * (abstol / reltol)
         end
     end
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::RadauIIA9ConstantCache)
@@ -115,7 +115,7 @@ function initialize!(integrator, cache::RadauIIA9ConstantCache)
     integrator.k[5] = zero(integrator.fsalfirst)
     integrator.k[6] = zero(integrator.fsalfirst)
     integrator.k[7] = zero(integrator.fsalfirst)
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::RadauIIA9Cache)
@@ -136,11 +136,11 @@ function initialize!(integrator, cache::RadauIIA9Cache)
             cache.rtol = reltol^(3 / 5) / 10
             cache.atol = cache.rtol * (abstol / reltol)
         else
-            @.. cache.rtol=reltol^(3 / 5) / 10
-            @.. cache.atol=cache.rtol * (abstol / reltol)
+            @.. cache.rtol = reltol^(3 / 5) / 10
+            @.. cache.atol = cache.rtol * (abstol / reltol)
         end
     end
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::AdaptiveRadauConstantCache)
@@ -157,7 +157,7 @@ function initialize!(integrator, cache::AdaptiveRadauConstantCache)
     for i in 3:(max_stages + 2)
         integrator.k[i] = zero(integrator.fsallast)
     end
-    nothing
+    return nothing
 end
 
 function initialize!(integrator, cache::AdaptiveRadauCache)
@@ -171,7 +171,7 @@ function initialize!(integrator, cache::AdaptiveRadauCache)
     end
     integrator.f(integrator.fsalfirst, integrator.uprev, integrator.p, integrator.t)
     OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
-    nothing
+    return nothing
 end
 
 @muladd function perform_step!(integrator, cache::RadauIIA3ConstantCache)
@@ -203,8 +203,10 @@ end
     else
         c2′ = dt / cache.dtprev
         c1′ = c1 * c2′
-        z1 = @.. c1′ * (integrator.k[3] + (c1′ - c1m1) * integrator.k[4])
-        z2 = @.. c2′ * (integrator.k[3] + (c2′ - c1m1) * integrator.k[4])
+        k3 = (integrator.k[3] - integrator.k[4]) / c1m1
+        k4 = k3 - (integrator.k[3] / c1)
+        z1 = @.. c1′ * (k3 + (c1′ - c1m1) * k4)
+        z2 = @.. c2′ * (k3 + (c2′ - c1m1) * k4)
         w1 = @.. TI11 * z1 + TI12 * z2
         w2 = @.. TI21 * z1 + TI22 * z2
     end
@@ -279,7 +281,7 @@ end
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -299,8 +301,8 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            integrator.k[3] = (z1 - z2) / c1m1
-            integrator.k[4] = integrator.k[3] - (z1 / c1)
+            integrator.k[3] = z1
+            integrator.k[4] = z2
         end
     end
 
@@ -316,11 +318,13 @@ end
     (; T11, T12, T21, T22, TI11, TI12, TI21, TI22) = cache.tab
     (; c1, c2, α, β, e1, e2) = cache.tab
     (; κ) = cache
-    (; z1, z2, w1, w2,
-    dw12, cubuff,
-    k, k2, fw1, fw2,
-    J, W1,
-    tmp, atmp, jac_config, rtol, atol, step_limiter!) = cache
+    (;
+        z1, z2, w1, w2,
+        dw12, cubuff,
+        k, k2, fw1, fw2,
+        J, W1,
+        tmp, atmp, jac_config, rtol, atol, step_limiter!,
+    ) = cache
     (; internalnorm, abstol, reltol, adaptive) = integrator.opts
     alg = unwrap_alg(integrator, true)
     (; maxiters) = alg
@@ -340,19 +344,21 @@ end
     if integrator.iter == 1 || integrator.u_modified || alg.extrapolant == :constant
         cache.dtprev = one(cache.dtprev)
         uzero = zero(eltype(u))
-        @.. z1=uzero
-        @.. z2=uzero
-        @.. w1=uzero
-        @.. w2=uzero
-        @.. integrator.k[3]=uzero
-        @.. integrator.k[4]=uzero
+        @.. z1 = uzero
+        @.. z2 = uzero
+        @.. w1 = uzero
+        @.. w2 = uzero
+        @.. integrator.k[3] = uzero
+        @.. integrator.k[4] = uzero
     else
         c2′ = dt / cache.dtprev
         c1′ = c1 * c2′
-        @.. z1=c1′ * (integrator.k[3] + (c1′ - c1m1) * integrator.k[4])
-        @.. z2=c2′ * (integrator.k[3] + (c2′ - c1m1) * integrator.k[4])
-        @.. w1=TI11 * z1 + TI12 * z2
-        @.. w2=TI21 * z1 + TI22 * z2
+        k3 = (integrator.k[3] - integrator.k[4]) / c1m1
+        k4 = k3 - (integrator.k[3] / c1)
+        @.. z1 = c1′ * (k3 + (c1′ - c1m1) * k4)
+        @.. z2 = c2′ * (k3 + (c2′ - c1m1) * k4)
+        @.. w1 = TI11 * z1 + TI12 * z2
+        @.. w2 = TI21 * z1 + TI22 * z2
     end
 
     # Newton iteration
@@ -395,11 +401,15 @@ end
         linsolve = cache.linsolve
 
         if needfactor
-            linres = dolinsolve(integrator, linsolve; A = W1, b = _vec(cubuff),
-                linu = _vec(dw12))
+            linres = dolinsolve(
+                integrator, linsolve; A = W1, b = _vec(cubuff),
+                linu = _vec(dw12)
+            )
         else
-            linres = dolinsolve(integrator, linsolve; A = nothing, b = _vec(cubuff),
-                linu = _vec(dw12))
+            linres = dolinsolve(
+                integrator, linsolve; A = nothing, b = _vec(cubuff),
+                linu = _vec(dw12)
+            )
         end
 
         cache.linsolve = linres.cache
@@ -437,7 +447,7 @@ end
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -463,8 +473,8 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            integrator.k[3] = (z1 - z2) / c1m1
-            integrator.k[4] = integrator.k[3] - (z1 / c1)
+            integrator.k[3] .= z1
+            integrator.k[4] .= z2
         end
     end
 
@@ -473,11 +483,15 @@ end
     return
 end
 
-@muladd function perform_step!(integrator, cache::RadauIIA5ConstantCache,
-        repeat_step = false)
+@muladd function perform_step!(
+        integrator, cache::RadauIIA5ConstantCache,
+        repeat_step = false
+    )
     (; t, dt, uprev, u, f, p, k) = integrator
-    (; T11, T12, T13, T21, T22, T23, T31, TI11, TI12, TI13,
-    TI21, TI22, TI23, TI31, TI32, TI33) = cache.tab
+    (;
+        T11, T12, T13, T21, T22, T23, T31, TI11, TI12, TI13,
+        TI21, TI22, TI23, TI31, TI32, TI33,
+    ) = cache.tab
     (; c1, c2, γ, α, β, e1, e2, e3) = cache.tab
     (; κ, cont1, cont2, cont3) = cache
     (; internalnorm, abstol, reltol, adaptive) = integrator.opts
@@ -486,8 +500,8 @@ end
     mass_matrix = integrator.f.mass_matrix
 
     # precalculations
-    rtol = @.. reltol^(2 / 3)/10
-    atol = @.. rtol*(abstol / reltol)
+    rtol = @.. reltol^(2 / 3) / 10
+    atol = @.. rtol * (abstol / reltol)
     c1m1 = c1 - 1
     c2m1 = c2 - 1
     c1mc2 = c1 - c2
@@ -519,12 +533,23 @@ end
         c3′ = dt / cache.dtprev
         c1′ = c1 * c3′
         c2′ = c2 * c3′
-        z1 = @.. c1′ * (k[3] + (c1′ - c2m1) * (k[4] + (c1′ - c1m1) * k[5]))
-        z2 = @.. c2′ * (k[3] + (c2′ - c2m1) * (k[4] + (c2′ - c1m1) * k[5]))
-        z3 = @.. c3′ * (k[3] + (c3′ - c2m1) * (k[4] + (c3′ - c1m1) * k[5]))
-        w1 = @.. TI11*z1+TI12*z2+TI13*z3
-        w2 = @.. TI21*z1+TI22*z2+TI23*z3
-        w3 = @.. TI31*z1+TI32*z2+TI33*z3
+        z1 = integrator.k[3]
+        z2 = integrator.k[4]
+        z3 = integrator.k[5]
+        k1 = (z2 - z3) / c2m1 #first derivative on [c2, 1]
+        tmp = (z1 - z2) / c1mc2 #first derivative on [c1, c2]
+        k2 = (tmp - k1) / c1m1 #second derivative on [c1, 1]
+        k3 = k2  - (tmp - z1 / c1) / c2 #third derivative on [0, c2]
+
+        z1= @.. c1′ * (k1 +
+                (c1′ - c2m1) * (k2 + (c1′ - c1m1) * k3))
+        z2= @.. c2′ * (k1 +
+                (c2′ - c2m1) * (k2 + (c2′ - c1m1) * k3))
+        z3= @.. c3′ * (k1 +
+                (c3′ - c2m1) * (k2 + (c3′ - c1m1) * k3))
+        w1= @.. TI11 * z1 + TI12 * z2 + TI13 * z3
+        w2= @.. TI21 * z1 + TI22 * z2 + TI23 * z3
+        w3= @.. TI31 * z1 + TI32 * z2 + TI33 * z3 
     end
 
     # Newton iteration
@@ -543,25 +568,25 @@ end
         ff3 = f(uprev + z3, p, t + dt) # c3 = 1
         OrdinaryDiffEqCore.increment_nf!(integrator.stats, 3)
 
-        fw1 = @.. TI11*ff1+TI12*ff2+TI13*ff3
-        fw2 = @.. TI21*ff1+TI22*ff2+TI23*ff3
-        fw3 = @.. TI31*ff1+TI32*ff2+TI33*ff3
+        fw1 = @.. TI11 * ff1 + TI12 * ff2 + TI13 * ff3
+        fw2 = @.. TI21 * ff1 + TI22 * ff2 + TI23 * ff3
+        fw3 = @.. TI31 * ff1 + TI32 * ff2 + TI33 * ff3
 
         if mass_matrix isa UniformScaling # `UniformScaling` doesn't play nicely with broadcast
-            Mw1 = @.. mass_matrix.λ*w1
-            Mw2 = @.. mass_matrix.λ*w2
-            Mw3 = @.. mass_matrix.λ*w3
+            Mw1 = @.. mass_matrix.λ * w1
+            Mw2 = @.. mass_matrix.λ * w2
+            Mw3 = @.. mass_matrix.λ * w3
         else
             Mw1 = mass_matrix * w1
             Mw2 = mass_matrix * w2
             Mw3 = mass_matrix * w3
         end
 
-        rhs1 = @.. fw1-γdt * Mw1
-        rhs2 = @.. fw2 - αdt * Mw2+βdt * Mw3
-        rhs3 = @.. fw3 - βdt * Mw2-αdt * Mw3
+        rhs1 = @.. fw1 - γdt * Mw1
+        rhs2 = @.. fw2 - αdt * Mw2 + βdt * Mw3
+        rhs3 = @.. fw3 - βdt * Mw2 - αdt * Mw3
         dw1 = _reshape(LU1 \ _vec(rhs1), axes(u))
-        dw23 = _reshape(LU2 \ _vec(@.. rhs2+rhs3 * im), axes(u))
+        dw23 = _reshape(LU2 \ _vec(@.. rhs2 + rhs3 * im), axes(u))
         integrator.stats.nsolve += 2
         dw2 = real(dw23)
         dw3 = imag(dw23)
@@ -584,20 +609,20 @@ end
             η = θ / (1 - θ)
         end
 
-        w1 = @.. w1-dw1
-        w2 = @.. w2-dw2
-        w3 = @.. w3-dw3
+        w1 = @.. w1 - dw1
+        w2 = @.. w2 - dw2
+        w3 = @.. w3 - dw3
 
         # transform `w` to `z`
-        z1 = @.. T11*w1+T12*w2+T13*w3
-        z2 = @.. T21*w1+T22*w2+T23*w3
-        z3 = @.. T31 * w1+w2           # T32 = 1, T33 = 0
+        z1 = @.. T11 * w1 + T12 * w2 + T13 * w3
+        z2 = @.. T21 * w1 + T22 * w2 + T23 * w3
+        z3 = @.. T31 * w1 + w2           # T32 = 1, T33 = 0
 
         # check stopping criterion
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -610,13 +635,13 @@ end
     cache.ηold = η
     cache.iter = iter
 
-    u = @.. uprev+z3
+    u = @.. uprev + z3
 
     if adaptive
         e1dt, e2dt, e3dt = e1 / dt, e2 / dt, e3 / dt
-        tmp = @.. e1dt*z1+e2dt*z2+e3dt*z3
+        tmp = @.. e1dt * z1 + e2dt * z2 + e3dt * z3
         mass_matrix != I && (tmp = mass_matrix * tmp)
-        utilde = @.. integrator.fsalfirst+tmp
+        utilde = @.. integrator.fsalfirst + tmp
         if alg.smooth_est
             utilde = _reshape(LU1 \ _vec(utilde), axes(u))
             integrator.stats.nsolve += 1
@@ -627,10 +652,10 @@ end
         integrator.EEst = internalnorm(atmp, t)
 
         if !(integrator.EEst < oneunit(integrator.EEst)) && integrator.iter == 1 ||
-           integrator.u_modified
+                integrator.u_modified
             f0 = f(uprev .+ utilde, p, t)
             OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
-            utilde = @.. f0+tmp
+            utilde = @.. f0 + tmp
             alg.smooth_est && (utilde = LU1 \ utilde; integrator.stats.nsolve += 1)
             atmp = calculate_residuals(utilde, uprev, u, atol, rtol, internalnorm, t)
             integrator.EEst = internalnorm(atmp, t)
@@ -641,10 +666,9 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            integrator.k[3] = (z2 - z3)/c2m1
-            tmp = @.. (z1 - z2)/c1mc2
-            integrator.k[4] = (tmp - integrator.k[3])/c1m1
-            integrator.k[5] = integrator.k[4]-(tmp - z1 / c1) / c2
+            integrator.k[3] = z1
+            integrator.k[4] = z2
+            integrator.k[5] = z3
         end
     else
         breakpointθ = find_discontinuity(u, uprev, integrator, cache) 
@@ -667,16 +691,20 @@ end
 
 @muladd function perform_step!(integrator, cache::RadauIIA5Cache, repeat_step = false)
     (; t, dt, uprev, u, f, p, fsallast, fsalfirst, k) = integrator
-    (; T11, T12, T13, T21, T22, T23, T31, TI11, TI12, TI13,
-    TI21, TI22, TI23, TI31, TI32, TI33) = cache.tab
+    (;
+        T11, T12, T13, T21, T22, T23, T31, TI11, TI12, TI13,
+        TI21, TI22, TI23, TI31, TI32, TI33,
+    ) = cache.tab
     (; c1, c2, γ, α, β, e1, e2, e3) = cache.tab
     (; κ) = cache
     linres1 = nothing
-    (; z1, z2, z3, w1, w2, w3,
-    dw1, ubuff, dw23, cubuff,
-    k, k2, k3, fw1, fw2, fw3,
-    J, W1, W2,
-    tmp, atmp, jac_config, linsolve1, linsolve2, rtol, atol, step_limiter!) = cache
+    (;
+        z1, z2, z3, w1, w2, w3,
+        dw1, ubuff, dw23, cubuff,
+        k, k1, k2, k3, fw1, fw2, fw3,
+        J, W1, W2,
+        tmp, atmp, jac_config, linsolve1, linsolve2, rtol, atol, step_limiter!,
+    ) = cache
     (; internalnorm, abstol, reltol, adaptive) = integrator.opts
     alg = unwrap_alg(integrator, true)
     (; maxiters) = alg
@@ -701,25 +729,33 @@ end
     if integrator.iter == 1 || integrator.u_modified || alg.extrapolant == :constant
         cache.dtprev = one(cache.dtprev)
         uzero = zero(eltype(u))
-        @.. z1=uzero
-        @.. z2=uzero
-        @.. z3=uzero
-        @.. w1=uzero
-        @.. w2=uzero
-        @.. w3=uzero
-        @.. integrator.k[3]=uzero
-        @.. integrator.k[4]=uzero
-        @.. integrator.k[5]=uzero
+        @.. z1 = uzero
+        @.. z2 = uzero
+        @.. z3 = uzero
+        @.. w1 = uzero
+        @.. w2 = uzero
+        @.. w3 = uzero
+        @.. integrator.k[3] = uzero
+        @.. integrator.k[4] = uzero
+        @.. integrator.k[5] = uzero
     else
         c3′ = dt / cache.dtprev
         c1′ = c1 * c3′
         c2′ = c2 * c3′
-        @.. z1=c1′ * (integrator.k[3] +
-                (c1′ - c2m1) * (integrator.k[4] + (c1′ - c1m1) * integrator.k[5]))
-        @.. z1=c2′ * (integrator.k[3] +
-                (c2′ - c2m1) * (integrator.k[4] + (c2′ - c1m1) * integrator.k[5]))
-        @.. z1=c3′ * (integrator.k[3] +
-                (c3′ - c2m1) * (integrator.k[4] + (c3′ - c1m1) * integrator.k[5]))
+        @.. z1 = integrator.k[3]
+        @.. z2 = integrator.k[4]
+        @.. z3 = integrator.k[5]
+        @.. k1 = (z2 - z3) / c2m1 #first derivative on [c2, 1]
+        @.. tmp = (z1 - z2) / c1mc2 #first derivative on [c1, c2]
+        @.. k2 = (tmp - k1) / c1m1 #second derivative on [c1, 1]
+        @.. k3 = k2  - (tmp - z1 / c1) / c2 #third derivative on [0, c2]
+
+        @.. z1=c1′ * (k1 +
+                (c1′ - c2m1) * (k2 + (c1′ - c1m1) * k3))
+        @.. z2=c2′ * (k1 +
+                (c2′ - c2m1) * (k2 + (c2′ - c1m1) * k3))
+        @.. z3=c3′ * (k1 +
+                (c3′ - c2m1) * (k2 + (c3′ - c1m1) * k3))
         @.. w1=TI11 * z1 + TI12 * z2 + TI13 * z3
         @.. w2=TI21 * z1 + TI22 * z2 + TI23 * z3
         @.. w3=TI31 * z1 + TI32 * z2 + TI33 * z3
@@ -736,17 +772,17 @@ end
         integrator.stats.nnonliniter += 1
 
         # evaluate function
-        @.. tmp=uprev + z1
+        @.. tmp = uprev + z1
         f(fsallast, tmp, p, t + c1 * dt)
-        @.. tmp=uprev + z2
+        @.. tmp = uprev + z2
         f(k2, tmp, p, t + c2 * dt)
-        @.. tmp=uprev + z3
+        @.. tmp = uprev + z3
         f(k3, tmp, p, t + dt) # c3 = 1
         OrdinaryDiffEqCore.increment_nf!(integrator.stats, 3)
 
-        @.. fw1=TI11 * fsallast + TI12 * k2 + TI13 * k3
-        @.. fw2=TI21 * fsallast + TI22 * k2 + TI23 * k3
-        @.. fw3=TI31 * fsallast + TI32 * k2 + TI33 * k3
+        @.. fw1 = TI11 * fsallast + TI12 * k2 + TI13 * k3
+        @.. fw2 = TI21 * fsallast + TI22 * k2 + TI23 * k3
+        @.. fw3 = TI31 * fsallast + TI32 * k2 + TI33 * k3
 
         if mass_matrix === I
             Mw1 = w1
@@ -768,32 +804,42 @@ end
             Mw3 = z3
         end
 
-        @.. ubuff=fw1 - γdt * Mw1
+        @.. ubuff = fw1 - γdt * Mw1
         needfactor = iter == 1 && new_W
 
         linsolve1 = cache.linsolve1
 
         if needfactor
-            linres1 = dolinsolve(integrator, linsolve1; A = W1, b = _vec(ubuff),
-                linu = _vec(dw1))
+            linres1 = dolinsolve(
+                integrator, linsolve1; A = W1, b = _vec(ubuff),
+                linu = _vec(dw1)
+            )
         else
-            linres1 = dolinsolve(integrator, linsolve1; A = nothing, b = _vec(ubuff),
-                linu = _vec(dw1))
+            linres1 = dolinsolve(
+                integrator, linsolve1; A = nothing, b = _vec(ubuff),
+                linu = _vec(dw1)
+            )
         end
 
         cache.linsolve1 = linres1.cache
 
-        @.. cubuff=complex(fw2 - αdt * Mw2 + βdt * Mw3,
-            fw3 - βdt * Mw2 - αdt * Mw3)
+        @.. cubuff = complex(
+            fw2 - αdt * Mw2 + βdt * Mw3,
+            fw3 - βdt * Mw2 - αdt * Mw3
+        )
 
         linsolve2 = cache.linsolve2
 
         if needfactor
-            linres2 = dolinsolve(integrator, linsolve2; A = W2, b = _vec(cubuff),
-                linu = _vec(dw23))
+            linres2 = dolinsolve(
+                integrator, linsolve2; A = W2, b = _vec(cubuff),
+                linu = _vec(dw23)
+            )
         else
-            linres2 = dolinsolve(integrator, linsolve2; A = nothing, b = _vec(cubuff),
-                linu = _vec(dw23))
+            linres2 = dolinsolve(
+                integrator, linsolve2; A = nothing, b = _vec(cubuff),
+                linu = _vec(dw23)
+            )
         end
 
         cache.linsolve2 = linres2.cache
@@ -801,8 +847,8 @@ end
         integrator.stats.nsolve += 2
         dw2 = z2
         dw3 = z3
-        @.. dw2=real(dw23)
-        @.. dw3=imag(dw23)
+        @.. dw2 = real(dw23)
+        @.. dw3 = imag(dw23)
 
         # compute norm of residuals
         ndwprev = ndw
@@ -826,20 +872,20 @@ end
             η = θ / (1 - θ)
         end
 
-        @.. w1=w1 - dw1
-        @.. w2=w2 - dw2
-        @.. w3=w3 - dw3
+        @.. w1 = w1 - dw1
+        @.. w2 = w2 - dw2
+        @.. w3 = w3 - dw3
 
         # transform `w` to `z`
-        @.. z1=T11 * w1 + T12 * w2 + T13 * w3
-        @.. z2=T21 * w1 + T22 * w2 + T23 * w3
-        @.. z3=T31 * w1 + w2           # T32 = 1, T33 = 0
+        @.. z1 = T11 * w1 + T12 * w2 + T13 * w3
+        @.. z2 = T21 * w1 + T22 * w2 + T23 * w3
+        @.. z3 = T31 * w1 + w2           # T32 = 1, T33 = 0
 
         # check stopping criterion
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -852,19 +898,21 @@ end
     cache.ηold = η
     cache.iter = iter
 
-    @.. u=uprev + z3
+    @.. u = uprev + z3
     step_limiter!(u, integrator, p, t + dt)
 
     if adaptive
         utilde = w2
         e1dt, e2dt, e3dt = e1 / dt, e2 / dt, e3 / dt
-        @.. tmp=e1dt * z1 + e2dt * z2 + e3dt * z3
+        @.. tmp = e1dt * z1 + e2dt * z2 + e3dt * z3
         mass_matrix != I && (mul!(w1, mass_matrix, tmp); copyto!(tmp, w1))
-        @.. ubuff=integrator.fsalfirst + tmp
+        @.. ubuff = integrator.fsalfirst + tmp
 
         if alg.smooth_est
-            linres1 = dolinsolve(integrator, linres1.cache; b = _vec(ubuff),
-                linu = _vec(utilde))
+            linres1 = dolinsolve(
+                integrator, linres1.cache; b = _vec(ubuff),
+                linu = _vec(utilde)
+            )
             cache.linsolve1 = linres1.cache
             integrator.stats.nsolve += 1
         end
@@ -875,15 +923,17 @@ end
         integrator.EEst = internalnorm(atmp, t)
 
         if !(integrator.EEst < oneunit(integrator.EEst)) && integrator.iter == 1 ||
-           integrator.u_modified
-            @.. utilde=uprev + utilde
+                integrator.u_modified
+            @.. utilde = uprev + utilde
             f(fsallast, utilde, p, t)
             OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
-            @.. ubuff=fsallast + tmp
+            @.. ubuff = fsallast + tmp
 
             if alg.smooth_est
-                linres1 = dolinsolve(integrator, linres1.cache; b = _vec(ubuff),
-                    linu = _vec(utilde))
+                linres1 = dolinsolve(
+                    integrator, linres1.cache; b = _vec(ubuff),
+                    linu = _vec(utilde)
+                )
                 cache.linsolve1 = linres1.cache
                 integrator.stats.nsolve += 1
             end
@@ -897,10 +947,9 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            integrator.k[3] = (z2 - z3) / c2m1 # (c2, z2) and (1, z3)
-            @.. tmp = (z1 - z2) / c1mc2
-            integrator.k[4] = (tmp - integrator.k[3]) / c1m1
-            integrator.k[5] = integrator.k[4] - (tmp - z1 / c1) / c2
+            integrator.k[3] .= z1
+            integrator.k[4] .= z2
+            integrator.k[5] .= z3
         end
     else
         p = integrator.p
@@ -950,14 +999,20 @@ end
     return
 end
 
-@muladd function perform_step!(integrator, cache::RadauIIA9ConstantCache,
-        repeat_step = false)
+@muladd function perform_step!(
+        integrator, cache::RadauIIA9ConstantCache,
+        repeat_step = false
+    )
     (; t, dt, uprev, u, f, p, k) = integrator
-    (; T11, T12, T13, T14, T15, T21, T22, T23, T24, T25, T31, T32,
-    T33, T34, T35, T41, T42, T43, T44, T45, T51) = cache.tab#= T52 = 1, T53 = 0, T54 = 1, T55 = 0=#
-    (; TI11,
-    TI12, TI13, TI14, TI15, TI21, TI22, TI23, TI24, TI25, TI31, TI32, TI33, TI34,
-    TI35, TI41, TI42, TI43, TI44, TI45, TI51, TI52, TI53, TI54, TI55) = cache.tab
+    (;
+        T11, T12, T13, T14, T15, T21, T22, T23, T24, T25, T31, T32,
+        T33, T34, T35, T41, T42, T43, T44, T45, T51,
+    ) = cache.tab #= T52 = 1, T53 = 0, T54 = 1, T55 = 0=#
+    (;
+        TI11,
+        TI12, TI13, TI14, TI15, TI21, TI22, TI23, TI24, TI25, TI31, TI32, TI33, TI34,
+        TI35, TI41, TI42, TI43, TI44, TI45, TI51, TI52, TI53, TI54, TI55,
+    ) = cache.tab
     (; c1, c2, c3, c4, γ, α1, β1, α2, β2, e1, e2, e3, e4, e5) = cache.tab
     (; κ) = cache
     (; internalnorm, abstol, reltol, adaptive) = integrator.opts
@@ -966,8 +1021,8 @@ end
     mass_matrix = integrator.f.mass_matrix
 
     # precalculations rtol pow is (num stages + 1)/(2*num stages)
-    rtol = @.. reltol^(3 / 5)/10
-    atol = @.. rtol*(abstol / reltol)
+    rtol = @.. reltol^(3 / 5) / 10
+    atol = @.. rtol * (abstol / reltol)
     c1m1 = c1 - 1
     c2m1 = c2 - 1
     c3m1 = c3 - 1
@@ -1016,25 +1071,45 @@ end
         c2′ = c2 * c5′
         c3′ = c3 * c5′
         c4′ = c4 * c5′
-        z1 = @.. c1′ * (k[3] +
-                  (c1′-c4m1) * (k[4] +
-                   (c1′ - c3m1) * (k[5] +
-                                   (c1′ - c2m1) * (k[6] + (c1′ - c1m1) * k[7]))))
-        z2 = @.. c2′ * (k[3] +
-                  (c2′-c4m1) * (k[4] +
-                   (c2′ - c3m1) * (k[5] +
-                                   (c2′ - c2m1) * (k[6] + (c2′ - c1m1) * k[7]))))
-        z3 = @.. c3′ * (k[3] +
-                  (c3′-c4m1) * (k[4] +
-                   (c3′ - c3m1) * (k[5] +
-                                   (c3′ - c2m1) * (k[6] + (c3′ - c1m1) * k[7]))))
-        z4 = @.. c4′ * (k[3] +
-                  (c4′-c4m1) * (k[4] +
-                   (c4′ - c3m1) * (k[5] +
-                                   (c4′ - c2m1) * (k[6] + (c4′ - c1m1) * k[7]))))
-        z5 = @.. c5′ * (k[3] +
-                  (c5′-c4m1) * (k[4] +
-                   (c5′ - c3m1) * (k[5] + (c5′ - c2m1) * (k[6] + (c5′ - c1m1) * k[7]))))
+        z1 = integrator.k[3]
+        z2 = integrator.k[4]
+        z3 = integrator.k[5]
+        z4 = integrator.k[6]
+        z5 = integrator.k[7]
+        k3 = @.. (z4 - z5) / c4m1 # first derivative on [c4, 1]
+        tmp1 = @.. (z3 - z4) / c3mc4 # first derivative on [c3, c4]
+        k4 = @.. (tmp1 - k3) / c3m1 # second derivative on [c3, 1]
+        tmp2 = @.. (z2 - z3) / c2mc3 # first derivative on [c2, c3]
+        tmp3 = @.. (tmp2 - tmp1) / c2mc4 # second derivative on [c2, c4]
+        k5 = @.. (tmp3 - k4) / c2m1 # third derivative on [c2, 1]
+        tmp4 = @.. (z1 - z2) / c1mc2 # first derivative on [c1, c2]
+        tmp5 = @.. (tmp4 - tmp2) / c1mc3 # second derivative on [c1, c3]
+        tmp6 = @.. (tmp5 - tmp3) / c1mc4 # third derivative on [c1, c4]
+        k6 = @.. (tmp6 - k5) / c1m1 #fourth derivative on [c1, 1]
+        tmp7 = @.. z1 / c1 #first derivative on [0, c1]
+        tmp8 = @.. (tmp4 - tmp7) / c2 #second derivative on [0, c2]
+        tmp9 = @.. (tmp5 - tmp8) / c3 #third derivative on [0, c3]
+        tmp10 = @.. (tmp6 - tmp9) / c4 #fourth derivative on [0,c4]
+        k7 = @.. k6 - tmp10 #fifth derivative on [0,1] 
+        z1 = @.. c1′ * (k3 +
+                  (c1′-c4m1) * (k4 +
+                   (c1′ - c3m1) * (k5 +
+                                   (c1′ - c2m1) * (k6 + (c1′ - c1m1) * k7))))
+        z2 = @.. c2′ * (k3 +
+                  (c2′-c4m1) * (k4 +
+                   (c2′ - c3m1) * (k5 +
+                                   (c2′ - c2m1) * (k6 + (c2′ - c1m1) * k7))))
+        z3 = @.. c3′ * (k3 +
+                  (c3′-c4m1) * (k4 +
+                   (c3′ - c3m1) * (k5 +
+                                   (c3′ - c2m1) * (k6 + (c3′ - c1m1) * k7))))
+        z4 = @.. c4′ * (k3 +
+                  (c4′-c4m1) * (k4 +
+                   (c4′ - c3m1) * (k5 +
+                                   (c4′ - c2m1) * (k6 + (c4′ - c1m1) * k7))))
+        z5 = @.. c5′ * (k3 +
+                  (c5′-c4m1) * (k4 +
+                   (c5′ - c3m1) * (k5 + (c5′ - c2m1) * (k6 + (c5′ - c1m1) * k7))))
         w1 = @.. TI11*z1+TI12*z2+TI13*z3+TI14*z4+TI15*z5
         w2 = @.. TI21*z1+TI22*z2+TI23*z3+TI24*z4+TI25*z5
         w3 = @.. TI31*z1+TI32*z2+TI33*z3+TI34*z4+TI35*z5
@@ -1060,18 +1135,18 @@ end
         ff5 = f(uprev + z5, p, t + dt) # c5 = 1
         OrdinaryDiffEqCore.increment_nf!(integrator.stats, 5)
 
-        fw1 = @.. TI11*ff1+TI12*ff2+TI13*ff3+TI14*ff4+TI15*ff5
-        fw2 = @.. TI21*ff1+TI22*ff2+TI23*ff3+TI24*ff4+TI25*ff5
-        fw3 = @.. TI31*ff1+TI32*ff2+TI33*ff3+TI34*ff4+TI35*ff5
-        fw4 = @.. TI41*ff1+TI42*ff2+TI43*ff3+TI44*ff4+TI45*ff5
-        fw5 = @.. TI51*ff1+TI52*ff2+TI53*ff3+TI54*ff4+TI55*ff5
+        fw1 = @.. TI11 * ff1 + TI12 * ff2 + TI13 * ff3 + TI14 * ff4 + TI15 * ff5
+        fw2 = @.. TI21 * ff1 + TI22 * ff2 + TI23 * ff3 + TI24 * ff4 + TI25 * ff5
+        fw3 = @.. TI31 * ff1 + TI32 * ff2 + TI33 * ff3 + TI34 * ff4 + TI35 * ff5
+        fw4 = @.. TI41 * ff1 + TI42 * ff2 + TI43 * ff3 + TI44 * ff4 + TI45 * ff5
+        fw5 = @.. TI51 * ff1 + TI52 * ff2 + TI53 * ff3 + TI54 * ff4 + TI55 * ff5
 
         if mass_matrix isa UniformScaling # `UniformScaling` doesn't play nicely with broadcast
-            Mw1 = @.. mass_matrix.λ*w1
-            Mw2 = @.. mass_matrix.λ*w2
-            Mw3 = @.. mass_matrix.λ*w3
-            Mw4 = @.. mass_matrix.λ*w4
-            Mw5 = @.. mass_matrix.λ*w5
+            Mw1 = @.. mass_matrix.λ * w1
+            Mw2 = @.. mass_matrix.λ * w2
+            Mw3 = @.. mass_matrix.λ * w3
+            Mw4 = @.. mass_matrix.λ * w4
+            Mw5 = @.. mass_matrix.λ * w5
         else
             Mw1 = mass_matrix * w1
             Mw2 = mass_matrix * w2
@@ -1080,14 +1155,14 @@ end
             Mw5 = mass_matrix * w5
         end
 
-        rhs1 = @.. fw1-γdt * Mw1
-        rhs2 = @.. fw2 - α1dt * Mw2+β1dt * Mw3
-        rhs3 = @.. fw3 - β1dt * Mw2-α1dt * Mw3
-        rhs4 = @.. fw4 - α2dt * Mw4+β2dt * Mw5
-        rhs5 = @.. fw5 - β2dt * Mw4-α2dt * Mw5
+        rhs1 = @.. fw1 - γdt * Mw1
+        rhs2 = @.. fw2 - α1dt * Mw2 + β1dt * Mw3
+        rhs3 = @.. fw3 - β1dt * Mw2 - α1dt * Mw3
+        rhs4 = @.. fw4 - α2dt * Mw4 + β2dt * Mw5
+        rhs5 = @.. fw5 - β2dt * Mw4 - α2dt * Mw5
         dw1 = _reshape(LU1 \ _vec(rhs1), axes(u))
-        dw23 = _reshape(LU2 \ _vec(@.. rhs2+rhs3 * im), axes(u))
-        dw45 = _reshape(LU3 \ _vec(@.. rhs4+rhs5 * im), axes(u))
+        dw23 = _reshape(LU2 \ _vec(@.. rhs2 + rhs3 * im), axes(u))
+        dw45 = _reshape(LU3 \ _vec(@.. rhs4 + rhs5 * im), axes(u))
         integrator.stats.nsolve += 3
         dw2 = real(dw23)
         dw3 = imag(dw23)
@@ -1102,7 +1177,7 @@ end
         atmp4 = calculate_residuals(dw4, uprev, u, atol, rtol, internalnorm, t)
         atmp5 = calculate_residuals(dw5, uprev, u, atol, rtol, internalnorm, t)
         ndw = internalnorm(atmp1, t) + internalnorm(atmp2, t) + internalnorm(atmp3, t) +
-              internalnorm(atmp4, t) + internalnorm(atmp5, t)
+            internalnorm(atmp4, t) + internalnorm(atmp5, t)
 
         # check divergence (not in initial step)
 
@@ -1117,24 +1192,24 @@ end
             η = θ / (1 - θ)
         end
 
-        w1 = @.. w1-dw1
-        w2 = @.. w2-dw2
-        w3 = @.. w3-dw3
-        w4 = @.. w4-dw4
-        w5 = @.. w5-dw5
+        w1 = @.. w1 - dw1
+        w2 = @.. w2 - dw2
+        w3 = @.. w3 - dw3
+        w4 = @.. w4 - dw4
+        w5 = @.. w5 - dw5
 
         # transform `w` to `z`
-        z1 = @.. T11*w1+T12*w2+T13*w3+T14*w4+T15*w5
-        z2 = @.. T21*w1+T22*w2+T23*w3+T24*w4+T25*w5
-        z3 = @.. T31*w1+T32*w2+T33*w3+T34*w4+T35*w5
-        z4 = @.. T41*w1+T42*w2+T43*w3+T44*w4+T45*w5
-        z5 = @.. T51*w1+w2+w4#= T52=1, T53=0, T54=1, T55=0 =#
+        z1 = @.. T11 * w1 + T12 * w2 + T13 * w3 + T14 * w4 + T15 * w5
+        z2 = @.. T21 * w1 + T22 * w2 + T23 * w3 + T24 * w4 + T25 * w5
+        z3 = @.. T31 * w1 + T32 * w2 + T33 * w3 + T34 * w4 + T35 * w5
+        z4 = @.. T41 * w1 + T42 * w2 + T43 * w3 + T44 * w4 + T45 * w5
+        z5 = @.. T51 * w1 + w2 + w4 #= T52=1, T53=0, T54=1, T55=0 =#
 
         # check stopping criterion
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -1148,13 +1223,13 @@ end
     cache.ηold = η
     cache.iter = iter
 
-    u = @.. uprev+z5
+    u = @.. uprev + z5
 
     if adaptive
         e1dt, e2dt, e3dt, e4dt, e5dt = e1 / dt, e2 / dt, e3 / dt, e4 / dt, e5 / dt
-        tmp = @.. e1dt*z1+e2dt*z2+e3dt*z3+e4dt*z4+e5dt*z5
+        tmp = @.. e1dt * z1 + e2dt * z2 + e3dt * z3 + e4dt * z4 + e5dt * z5
         mass_matrix != I && (tmp = mass_matrix * tmp)
-        utilde = @.. integrator.fsalfirst+tmp
+        utilde = @.. integrator.fsalfirst + tmp
         if alg.smooth_est
             utilde = _reshape(LU1 \ _vec(utilde), axes(u))
             integrator.stats.nsolve += 1
@@ -1163,10 +1238,10 @@ end
         integrator.EEst = internalnorm(atmp, t)
 
         if !(integrator.EEst < oneunit(integrator.EEst)) && integrator.iter == 1 ||
-           integrator.u_modified
+                integrator.u_modified
             f0 = f(uprev .+ utilde, p, t)
             OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
-            utilde = @.. f0+tmp
+            utilde = @.. f0 + tmp
             alg.smooth_est && (utilde = LU1 \ utilde; integrator.stats.nsolve += 1)
             atmp = calculate_residuals(utilde, uprev, u, atol, rtol, internalnorm, t)
             integrator.EEst = internalnorm(atmp, t)
@@ -1176,21 +1251,11 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            integrator.k[3] = (z4 - z5) / c4m1 # first derivative on [c4, 1]
-            tmp1 = @.. (z3 - z4) / c3mc4 # first derivative on [c3, c4]
-            integrator.k[4] = (tmp1 - integrator.k[3]) / c3m1 # second derivative on [c3, 1]
-            tmp2 = @.. (z2 - z3) / c2mc3 # first derivative on [c2, c3]
-            tmp3 = @.. (tmp2 - tmp1) / c2mc4 # second derivative on [c2, c4]
-            integrator.k[5] = (tmp3 - integrator.k[4]) / c2m1 # third derivative on [c2, 1]
-            tmp4 = @.. (z1 - z2) / c1mc2 # first derivative on [c1, c2]
-            tmp5 = @.. (tmp4 - tmp2) / c1mc3 # second derivative on [c1, c3]
-            tmp6 = @.. (tmp5 - tmp3) / c1mc4 # third derivative on [c1, c4]
-            integrator.k[6] = (tmp6 - integrator.k[5]) / c1m1 #fourth derivative on [c1, 1]
-            tmp7 = @.. z1 / c1 #first derivative on [0, c1]
-            tmp8 = @.. (tmp4 - tmp7) / c2 #second derivative on [0, c2]
-            tmp9 = @.. (tmp5 - tmp8) / c3 #third derivative on [0, c3]
-            tmp10 = @.. (tmp6 - tmp9) / c4 #fourth derivative on [0,c4]
-            integrator.k[7] = integrator.k[6] - tmp10 #fifth derivative on [0,1]
+            integrator.k[3] = z1
+            integrator.k[4] = z2
+            integrator.k[5] = z3
+            integrator.k[6] = z4
+            integrator.k[7] = z5
         end
     end
 
@@ -1204,20 +1269,25 @@ end
 
 @muladd function perform_step!(integrator, cache::RadauIIA9Cache, repeat_step = false)
     (; t, dt, uprev, u, f, p, fsallast, fsalfirst, k) = integrator
-    (; T11, T12, T13, T14, T15, T21, T22, T23, T24, T25, T31, T32,
-    T33, T34, T35, T41, T42, T43, T44, T45, T51) = cache.tab#= T52 = 1, T53 = 0, T54 = 1, T55 = 0=#
-    (; TI11,
-    TI12, TI13, TI14, TI15, TI21, TI22, TI23, TI24, TI25, TI31, TI32, TI33, TI34,
-    TI35, TI41, TI42, TI43, TI44, TI45, TI51, TI52, TI53, TI54, TI55) = cache.tab
+    (;
+        T11, T12, T13, T14, T15, T21, T22, T23, T24, T25, T31, T32,
+        T33, T34, T35, T41, T42, T43, T44, T45, T51,
+    ) = cache.tab #= T52 = 1, T53 = 0, T54 = 1, T55 = 0=#
+    (;
+        TI11,
+        TI12, TI13, TI14, TI15, TI21, TI22, TI23, TI24, TI25, TI31, TI32, TI33, TI34,
+        TI35, TI41, TI42, TI43, TI44, TI45, TI51, TI52, TI53, TI54, TI55,
+    ) = cache.tab
     (; c1, c2, c3, c4, γ, α1, β1, α2, β2, e1, e2, e3, e4, e5) = cache.tab
     (; κ) = cache
     linres1 = nothing
     (; z1, z2, z3, z4, z5, w1, w2, w3, w4, w5) = cache
     (; dw1, ubuff, dw23, dw45, cubuff1, cubuff2) = cache
-    (; k, k2, k3, k4, k5, fw1, fw2, fw3, fw4, fw5) = cache
+    (; k, k1, k2, k3, k4, k5, fw1, fw2, fw3, fw4, fw5) = cache
     (; J, W1, W2, W3) = cache
-    (; tmp, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8, tmp9, tmp10, atmp, jac_config,
-    linsolve1, linsolve2, linsolve3, rtol, atol, step_limiter!) = cache
+    (;  tmp, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8, tmp9, tmp10, atmp, jac_config,
+        linsolve1, linsolve2, linsolve3, rtol, atol, step_limiter!,
+    ) = cache
     (; internalnorm, abstol, reltol, adaptive) = integrator.opts
     alg = unwrap_alg(integrator, true)
     (; maxiters) = alg
@@ -1251,16 +1321,16 @@ end
     if integrator.iter == 1 || integrator.u_modified || alg.extrapolant == :constant
         cache.dtprev = one(cache.dtprev)
         uzero = zero(eltype(u))
-        @.. z1=uzero
-        @.. z2=uzero
-        @.. z3=uzero
-        @.. z4=uzero
-        @.. z5=uzero
-        @.. w1=uzero
-        @.. w2=uzero
-        @.. w3=uzero
-        @.. w4=uzero
-        @.. w5=uzero
+        @.. z1 = uzero
+        @.. z2 = uzero
+        @.. z3 = uzero
+        @.. z4 = uzero
+        @.. z5 = uzero
+        @.. w1 = uzero
+        @.. w2 = uzero
+        @.. w3 = uzero
+        @.. w4 = uzero
+        @.. w5 = uzero
         integrator.k[3] = map(zero, u)
         integrator.k[4] = map(zero, u)
         integrator.k[5] = map(zero, u)
@@ -1272,26 +1342,45 @@ end
         c2′ = c2 * c5′
         c3′ = c3 * c5′
         c4′ = c4 * c5′
-        @.. z1 = c1′ * (integrator.k[3] +
-                  (c1′-c4m1) * (integrator.k[4] +
-                   (c1′ - c3m1) * (integrator.k[5] +
-                    (c1′ - c2m1) * (integrator.k[6] + (c1′ - c1m1) * integrator.k[7]))))
-        @.. z2 = c2′ * (integrator.k[3] +
-                  (c2′-c4m1) * (integrator.k[4] +
-                   (c2′ - c3m1) * (integrator.k[5] +
-                    (c2′ - c2m1) * (integrator.k[6] + (c2′ - c1m1) * integrator.k[7]))))
-        @.. z3 = c3′ * (integrator.k[3] +
-                  (c3′-c4m1) * (integrator.k[4] +
-                   (c3′ - c3m1) * (integrator.k[5] +
-                    (c3′ - c2m1) * (integrator.k[6] + (c3′ - c1m1) * integrator.k[7]))))
-        @.. z4 = c4′ * (integrator.k[3] +
-                  (c4′-c4m1) * (integrator.k[4] +
-                   (c4′ - c3m1) * (integrator.k[5] +
-                    (c4′ - c2m1) * (integrator.k[6] + (c4′ - c1m1) * integrator.k[7]))))
-        @.. z5 = c5′ * (integrator.k[3] +
-                  (c5′-c4m1) * (integrator.k[4] +
-                   (c5′ - c3m1) * (integrator.k[5] +
-                    (c5′ - c2m1) * (integrator.k[6] + (c5′ - c1m1) * integrator.k[7]))))
+        @.. z1 = integrator.k[3]
+        @.. z2 = integrator.k[4]
+        @.. z3 = integrator.k[5]
+        @.. z4 = integrator.k[6]
+        @.. z5 = integrator.k[7]
+        @.. k1 = (z4 - z5) / c4m1 # first derivative on [c4, 1]
+        @.. tmp = (z3 - z4) / c3mc4 # first derivative on [c3, c4]
+        @.. k2 = (tmp - k1) / c3m1 # second derivative on [c3, 1]
+        @.. tmp2 = (z2 - z3) / c2mc3 # first derivative on [c2, c3]
+        @.. tmp3 = (tmp2 - tmp) / c2mc4 # second derivative on [c2, c4]
+        @.. k3 = (tmp3 - k2) / c2m1 # third derivative on [c2, 1]
+        @.. tmp4 = (z1 - z2) / c1mc2 # first derivative on [c1, c2]
+        @.. tmp5 = (tmp4 - tmp2) / c1mc3 # second derivative on [c1, c3]
+        @.. tmp6 = (tmp5 - tmp3) / c1mc4 # third derivative on [c1, c4]
+        @.. k4 = (tmp6 - k3) / c1m1 #fourth derivative on [c1, 1]
+        @.. tmp7 = z1 / c1 #first derivative on [0, c1]
+        @.. tmp8 = (tmp4 - tmp7) / c2 #second derivative on [0, c2]
+        @.. tmp9 = (tmp5 - tmp8) / c3 #third derivative on [0, c3]
+        @.. tmp10 = (tmp6 - tmp9) / c4 #fourth derivative on [0,c4]
+        @.. k5 = k4 - tmp10 #fifth derivative on [0,1] 
+        @.. z1 = c1′ * (k1 +
+                  (c1′-c4m1) * (k2 +
+                   (c1′ - c3m1) * (k3 +
+                    (c1′ - c2m1) * (k4 + (c1′ - c1m1) * k5))))
+        @.. z2 = c2′ * (k1 +
+                  (c2′-c4m1) * (k2 +
+                   (c2′ - c3m1) * (k3 +
+                    (c2′ - c2m1) * (k4 + (c2′ - c1m1) * k5))))
+        @.. z3 = c3′ * (k1 +
+                  (c3′-c4m1) * (k2 +
+                   (c3′ - c3m1) * (k3 +
+                    (c3′ - c2m1) * (k4 + (c3′ - c1m1) * k5))))
+        @.. z4 = c4′ * (k1 +
+                  (c4′-c4m1) * (k2 +
+                   (c4′ - c3m1) * (k3 +
+                    (c4′ - c2m1) * (k4 + (c4′ - c1m1) * k5))))
+        @.. z5 = c5′ * (k1 +
+                  (c5′-c4m1) * (k2 +
+                   (c5′ - c3m1) * (k3 + (c5′ - c2m1) * (k4 + (c5′ - c1m1) * k5))))
         @.. w1 = TI11*z1+TI12*z2+TI13*z3+TI14*z4+TI15*z5
         @.. w2 = TI21*z1+TI22*z2+TI23*z3+TI24*z4+TI25*z5
         @.. w3 = TI31*z1+TI32*z2+TI33*z3+TI34*z4+TI35*z5
@@ -1310,28 +1399,28 @@ end
         integrator.stats.nnonliniter += 1
 
         # evaluate function
-        @.. tmp=uprev + z1
+        @.. tmp = uprev + z1
         f(fsallast, tmp, p, t + c1 * dt)
-        @.. tmp=uprev + z2
+        @.. tmp = uprev + z2
         f(k2, tmp, p, t + c2 * dt)
-        @.. tmp=uprev + z3
+        @.. tmp = uprev + z3
         f(k3, tmp, p, t + c3 * dt)
-        @.. tmp=uprev + z4
+        @.. tmp = uprev + z4
         f(k4, tmp, p, t + c4 * dt)
-        @.. tmp=uprev + z5
+        @.. tmp = uprev + z5
         f(k5, tmp, p, t + dt) # c5 = 1
         OrdinaryDiffEqCore.increment_nf!(integrator.stats, 5)
 
-        @.. fw1=TI11 * fsallast + TI12 * k2 + TI13 * k3 + TI14 * k4 +
-                TI15 * k5
-        @.. fw2=TI21 * fsallast + TI22 * k2 + TI23 * k3 + TI24 * k4 +
-                TI25 * k5
-        @.. fw3=TI31 * fsallast + TI32 * k2 + TI33 * k3 + TI34 * k4 +
-                TI35 * k5
-        @.. fw4=TI41 * fsallast + TI42 * k2 + TI43 * k3 + TI44 * k4 +
-                TI45 * k5
-        @.. fw5=TI51 * fsallast + TI52 * k2 + TI53 * k3 + TI54 * k4 +
-                TI55 * k5
+        @.. fw1 = TI11 * fsallast + TI12 * k2 + TI13 * k3 + TI14 * k4 +
+            TI15 * k5
+        @.. fw2 = TI21 * fsallast + TI22 * k2 + TI23 * k3 + TI24 * k4 +
+            TI25 * k5
+        @.. fw3 = TI31 * fsallast + TI32 * k2 + TI33 * k3 + TI34 * k4 +
+            TI35 * k5
+        @.. fw4 = TI41 * fsallast + TI42 * k2 + TI43 * k3 + TI44 * k4 +
+            TI45 * k5
+        @.. fw5 = TI51 * fsallast + TI52 * k2 + TI53 * k3 + TI54 * k4 +
+            TI55 * k5
 
         if mass_matrix === I
             Mw1 = w1
@@ -1363,59 +1452,67 @@ end
             Mw5 = z5
         end
 
-        @.. ubuff=fw1 - γdt * Mw1
+        @.. ubuff = fw1 - γdt * Mw1
         needfactor = iter == 1 && new_W
 
         linsolve1 = cache.linsolve1
 
         if needfactor
             linres1 = dolinsolve(
-                integrator, linsolve1; A = W1, b = _vec(ubuff), linu = _vec(dw1))
+                integrator, linsolve1; A = W1, b = _vec(ubuff), linu = _vec(dw1)
+            )
         else
             linres1 = dolinsolve(
-                integrator, linsolve1; A = nothing, b = _vec(ubuff), linu = _vec(dw1))
+                integrator, linsolve1; A = nothing, b = _vec(ubuff), linu = _vec(dw1)
+            )
         end
 
         cache.linsolve1 = linres1.cache
 
-        @.. cubuff1=complex(
-            fw2 - α1dt * Mw2 + β1dt * Mw3, fw3 - β1dt * Mw2 - α1dt * Mw3)
+        @.. cubuff1 = complex(
+            fw2 - α1dt * Mw2 + β1dt * Mw3, fw3 - β1dt * Mw2 - α1dt * Mw3
+        )
 
         linsolve2 = cache.linsolve2
 
         if needfactor
             linres2 = dolinsolve(
-                integrator, linsolve2; A = W2, b = _vec(cubuff1), linu = _vec(dw23))
+                integrator, linsolve2; A = W2, b = _vec(cubuff1), linu = _vec(dw23)
+            )
         else
             linres2 = dolinsolve(
-                integrator, linsolve2; A = nothing, b = _vec(cubuff1), linu = _vec(dw23))
+                integrator, linsolve2; A = nothing, b = _vec(cubuff1), linu = _vec(dw23)
+            )
         end
 
         cache.linsolve2 = linres2.cache
 
-        @.. cubuff2=complex(
-            fw4 - α2dt * Mw4 + β2dt * Mw5, fw5 - β2dt * Mw4 - α2dt * Mw5)
+        @.. cubuff2 = complex(
+            fw4 - α2dt * Mw4 + β2dt * Mw5, fw5 - β2dt * Mw4 - α2dt * Mw5
+        )
 
         linsolve3 = cache.linsolve3
 
         if needfactor
             linres3 = dolinsolve(
-                integrator, linsolve3; A = W3, b = _vec(cubuff2), linu = _vec(dw45))
+                integrator, linsolve3; A = W3, b = _vec(cubuff2), linu = _vec(dw45)
+            )
         else
             linres3 = dolinsolve(
-                integrator, linsolve3; A = nothing, b = _vec(cubuff2), linu = _vec(dw45))
+                integrator, linsolve3; A = nothing, b = _vec(cubuff2), linu = _vec(dw45)
+            )
         end
 
         cache.linsolve3 = linres3.cache
         integrator.stats.nsolve += 3
         dw2 = z2
         dw3 = z3
-        @.. dw2=real(dw23)
-        @.. dw3=imag(dw23)
+        @.. dw2 = real(dw23)
+        @.. dw3 = imag(dw23)
         dw4 = z4
         dw5 = z5
-        @.. dw4=real(dw45)
-        @.. dw5=imag(dw45)
+        @.. dw4 = real(dw45)
+        @.. dw5 = imag(dw45)
 
         # compute norm of residuals
         ndwprev = ndw
@@ -1444,24 +1541,24 @@ end
             η = θ / (1 - θ)
         end
 
-        @.. w1=w1 - dw1
-        @.. w2=w2 - dw2
-        @.. w3=w3 - dw3
-        @.. w4=w4 - dw4
-        @.. w5=w5 - dw5
+        @.. w1 = w1 - dw1
+        @.. w2 = w2 - dw2
+        @.. w3 = w3 - dw3
+        @.. w4 = w4 - dw4
+        @.. w5 = w5 - dw5
 
         # transform `w` to `z`
-        @.. z1=T11 * w1 + T12 * w2 + T13 * w3 + T14 * w4 + T15 * w5
-        @.. z2=T21 * w1 + T22 * w2 + T23 * w3 + T24 * w4 + T25 * w5
-        @.. z3=T31 * w1 + T32 * w2 + T33 * w3 + T34 * w4 + T35 * w5
-        @.. z4=T41 * w1 + T42 * w2 + T43 * w3 + T44 * w4 + T45 * w5
-        @.. z5=T51 * w1 + w2 + w4#= T52=1, T53=0, T54=1, T55=0 =#
+        @.. z1 = T11 * w1 + T12 * w2 + T13 * w3 + T14 * w4 + T15 * w5
+        @.. z2 = T21 * w1 + T22 * w2 + T23 * w3 + T24 * w4 + T25 * w5
+        @.. z3 = T31 * w1 + T32 * w2 + T33 * w3 + T34 * w4 + T35 * w5
+        @.. z4 = T41 * w1 + T42 * w2 + T43 * w3 + T44 * w4 + T45 * w5
+        @.. z5 = T51 * w1 + w2 + w4 #= T52=1, T53=0, T54=1, T55=0 =#
 
         # check stopping criterion
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -1475,20 +1572,22 @@ end
     cache.ηold = η
     cache.iter = iter
 
-    @.. u=uprev + z5
+    @.. u = uprev + z5
 
     step_limiter!(u, integrator, p, t + dt)
 
     if adaptive
         utilde = w2
         e1dt, e2dt, e3dt, e4dt, e5dt = e1 / dt, e2 / dt, e3 / dt, e4 / dt, e5 / dt
-        @.. tmp=e1dt * z1 + e2dt * z2 + e3dt * z3 + e4dt * z4 + e5dt * z5
+        @.. tmp = e1dt * z1 + e2dt * z2 + e3dt * z3 + e4dt * z4 + e5dt * z5
         mass_matrix != I && (mul!(w1, mass_matrix, tmp); copyto!(tmp, w1))
-        @.. ubuff=integrator.fsalfirst + tmp
+        @.. ubuff = integrator.fsalfirst + tmp
 
         if alg.smooth_est
-            linres1 = dolinsolve(integrator, linres1.cache; b = _vec(ubuff),
-                linu = _vec(utilde))
+            linres1 = dolinsolve(
+                integrator, linres1.cache; b = _vec(ubuff),
+                linu = _vec(utilde)
+            )
             cache.linsolve1 = linres1.cache
             integrator.stats.nsolve += 1
         end
@@ -1499,15 +1598,17 @@ end
         integrator.EEst = internalnorm(atmp, t)
 
         if !(integrator.EEst < oneunit(integrator.EEst)) && integrator.iter == 1 ||
-           integrator.u_modified
-            @.. utilde=uprev + utilde
+                integrator.u_modified
+            @.. utilde = uprev + utilde
             f(fsallast, utilde, p, t)
             OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
-            @.. ubuff=fsallast + tmp
+            @.. ubuff = fsallast + tmp
 
             if alg.smooth_est
-                linres1 = dolinsolve(integrator, linres1.cache; b = _vec(ubuff),
-                    linu = _vec(utilde))
+                linres1 = dolinsolve(
+                    integrator, linres1.cache; b = _vec(ubuff),
+                    linu = _vec(utilde)
+                )
                 cache.linsolve1 = linres1.cache
                 integrator.stats.nsolve += 1
             end
@@ -1520,21 +1621,11 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            integrator.k[3] = (z4 - z5) / c4m1 # first derivative on [c4, 1]
-            @.. tmp = (z3 - z4) / c3mc4 # first derivative on [c3, c4]
-            integrator.k[4] = (tmp - integrator.k[3]) / c3m1 # second derivative on [c3, 1]
-            @.. tmp2 = (z2 - z3) / c2mc3 # first derivative on [c2, c3]
-            @.. tmp3 = (tmp2 - tmp) / c2mc4 # second derivative on [c2, c4]
-            integrator.k[5] = (tmp3 - integrator.k[4]) / c2m1 # third derivative on [c2, 1]
-            @.. tmp4 = (z1 - z2) / c1mc2 # first derivative on [c1, c2]
-            @.. tmp5 = (tmp4 - tmp2) / c1mc3 # second derivative on [c1, c3]
-            @.. tmp6 = (tmp5 - tmp3) / c1mc4 # third derivative on [c1, c4]
-            integrator.k[6] = (tmp6 - integrator.k[5]) / c1m1 #fourth derivative on [c1, 1]
-            @.. tmp7 = z1 / c1 #first derivative on [0, c1]
-            @.. tmp8 = (tmp4 - tmp7) / c2 #second derivative on [0, c2]
-            @.. tmp9 = (tmp5 - tmp8) / c3 #third derivative on [0, c3]
-            @.. tmp10 = (tmp6 - tmp9) / c4 #fourth derivative on [0,c4]
-            integrator.k[7] = integrator.k[6] - tmp10 #fifth derivative on [0,1]
+            integrator.k[3] .= z1
+            integrator.k[4] .= z2
+            integrator.k[5] .= z3
+            integrator.k[6] .= z4
+            integrator.k[7] .= z5
         end
     end
 
@@ -1543,8 +1634,10 @@ end
     return
 end
 
-@muladd function perform_step!(integrator, cache::AdaptiveRadauConstantCache,
-        repeat_step = false)
+@muladd function perform_step!(
+        integrator, cache::AdaptiveRadauConstantCache,
+        repeat_step = false
+    )
     (; t, dt, uprev, u, f, p, k) = integrator
     (; tabs, num_stages, index) = cache
     tab = tabs[index]
@@ -1556,8 +1649,8 @@ end
     mass_matrix = integrator.f.mass_matrix
 
     # precalculations rtol pow is (num stages + 1)/(2*num stages)
-    rtol = @.. reltol^((num_stages + 1) / (num_stages * 2))/10
-    atol = @.. rtol*(abstol / reltol)
+    rtol = @.. reltol^((num_stages + 1) / (num_stages * 2)) / 10
+    atol = @.. rtol * (abstol / reltol)
 
     γdt, αdt, βdt = γ / dt, α ./ dt, β ./ dt
 
@@ -1594,14 +1687,30 @@ end
     else
         c_prime = Vector{typeof(dt)}(undef, num_stages) #time stepping
         c_prime[num_stages] = dt / cache.dtprev
+        derivatives = Matrix{typeof(u)}(undef, num_stages, num_stages)
+        for i in 1:num_stages
+            z[i] = @.. integrator.k[i + 2]
+        end
+        derivatives[1, 1] = @.. z[1] / c[1]
+        for j in 2:num_stages
+            derivatives[1, j] = @.. (z[j - 1] - z[j]) / (c[j - 1] - c[j]) #first derivatives
+        end
+        for i in 2:num_stages
+            derivatives[i, i] = @.. (derivatives[i - 1, i] -
+                                        derivatives[i - 1, i - 1]) / c[i] #diagonal vals
+            for j in (i + 1):num_stages
+                derivatives[i, j] = @.. (derivatives[i - 1, j - 1] -
+                                            derivatives[i - 1, j]) / (c[j - i] - c[j]) #all others
+            end
+        end
         for i in 1:(num_stages - 1)
             c_prime[i] = c[i] * c_prime[num_stages]
         end
         for i in 1:num_stages # collocation polynomial
-            z[i] = @.. k[num_stages + 1] + k[num_stages + 2] * (c_prime[i] - c[1] + 1)
-            j = num_stages - 2
+            z[i] = @.. derivatives[num_stages, num_stages]
+            j = num_stages - 1
             while j > 0
-                z[i] = @.. k[j + 2] + z[i] * (c_prime[i] - c[num_stages - j] + 1)
+                z[i] = @.. derivatives[j, num_stages] + z[i] * (c_prime[i] - c[num_stages - j] + 1)
                 j = j - 1
             end
             z[i] = @.. z[i] * c_prime[i]
@@ -1663,7 +1772,8 @@ end
         z[1] = _reshape(LU1 \ _vec(rhs[1]), axes(u))
         for i in 2:((num_stages + 1) ÷ 2)
             tmp = _reshape(
-                LU2[i - 1] \ _vec(@.. rhs[2 * i - 2] + rhs[2 * i - 1] * im), axes(u))
+                LU2[i - 1] \ _vec(@.. rhs[2 * i - 2] + rhs[2 * i - 1] * im), axes(u)
+            )
             z[2 * i - 2] = @.. real(tmp)
             z[2 * i - 1] = @.. imag(tmp)
         end
@@ -1674,7 +1784,8 @@ end
         ndw = 0.0
         for i in 1:num_stages
             ndw += internalnorm(
-                calculate_residuals(z[i], uprev, u, atol, rtol, internalnorm, t), t)
+                calculate_residuals(z[i], uprev, u, atol, rtol, internalnorm, t), t
+            )
         end
 
         # check divergence (not in initial step)
@@ -1713,7 +1824,7 @@ end
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -1736,7 +1847,7 @@ end
         end
         mass_matrix != I && (tmp = mass_matrix * tmp)
         #utilde = @..  1 / γ * dt * integrator.fsalfirst + tmp
-        utilde = @.. integrator.fsalfirst+tmp
+        utilde = @.. integrator.fsalfirst + tmp
         if alg.smooth_est
             utilde = _reshape(LU1 \ _vec(utilde), axes(u))
             integrator.stats.nsolve += 1
@@ -1745,11 +1856,11 @@ end
         integrator.EEst = internalnorm(atmp, t)
 
         if !(integrator.EEst < oneunit(integrator.EEst)) && integrator.iter == 1 ||
-           integrator.u_modified
+                integrator.u_modified
             f0 = f(uprev .+ utilde, p, t)
             OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
             #utilde = @..  1 / γ * dt * f0 + tmp
-            utilde = @.. f0+tmp
+            utilde = @.. f0 + tmp
             if alg.smooth_est
                 utilde = _reshape(LU1 \ _vec(utilde), axes(u))
                 integrator.stats.nsolve += 1
@@ -1762,21 +1873,8 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            derivatives = Matrix{typeof(u)}(undef, num_stages, num_stages)
-            derivatives[1, 1] = @.. z[1] / c[1]
-            for j in 2:num_stages
-                derivatives[1, j] = @.. (z[j - 1] - z[j]) / (c[j - 1] - c[j]) #first derivatives
-            end
-            for i in 2:num_stages
-                derivatives[i, i] = @.. (derivatives[i - 1, i] -
-                                         derivatives[i - 1, i - 1]) / c[i]
-                for j in (i + 1):num_stages
-                    derivatives[i, j] = @.. (derivatives[i - 1, j - 1] -
-                                             derivatives[i - 1, j]) / (c[j - i] - c[j]) #all others
-                end
-            end
             for i in 1:num_stages
-                integrator.k[i + 2] = derivatives[i, num_stages]
+                integrator.k[i + 2] = @.. z[i]
             end
         end
     end
@@ -1816,8 +1914,8 @@ end
             cache.rtol = reltol^((num_stages + 1) / (2 * num_stages)) / 10
             cache.atol = cache.rtol * (abstol / reltol)
         else
-            @.. cache.rtol=reltol^((num_stages + 1) / (2 * num_stages)) / 10
-            @.. cache.atol=cache.rtol * (abstol / reltol)
+            @.. cache.rtol = reltol^((num_stages + 1) / (2 * num_stages)) / 10
+            @.. cache.atol = cache.rtol * (abstol / reltol)
         end
     end
 
@@ -1835,12 +1933,12 @@ end
             end
         else
             let W1 = W1, W2 = W2, γdt = γdt, αdt = αdt, βdt = βdt,
-                mass_matrix = mass_matrix, num_stages = num_stages, J = J
+                    mass_matrix = mass_matrix, num_stages = num_stages, J = J
 
                 @inbounds @threaded alg.threading for i in 1:((num_stages - 1) ÷ 2)
                     for II in CartesianIndices(J)
                         W2[i][II] = -(αdt[i] + βdt[i] * im) * mass_matrix[Tuple(II)...] +
-                                    J[II]
+                            J[II]
                     end
                 end
             end
@@ -1857,19 +1955,33 @@ end
             integrator.k[i + 2] = map(zero, u)
         end
     else
+        for i in 1:num_stages 
+            @.. z[i] = integrator.k[i + 2] 
+        end
+        @.. derivatives[1, 1] = z[1] / c[1]
+        for j in 2:num_stages
+            @.. derivatives[1, j] = (z[j - 1] - z[j]) / (c[j - 1] - c[j]) #first derivatives
+        end
+        for i in 2:num_stages
+            @.. derivatives[i, i] = (derivatives[i - 1, i] -
+                                        derivatives[i - 1, i - 1]) / c[i]
+            for j in (i + 1):num_stages
+                @.. derivatives[i, j] = (derivatives[i - 1, j - 1] -
+                                            derivatives[i - 1, j]) / (c[j - i] - c[j]) #all others
+            end
+        end
         c_prime[num_stages] = dt / cache.dtprev
         for i in 1:(num_stages - 1)
             c_prime[i] = c[i] * c_prime[num_stages]
         end
         for i in 1:num_stages # collocation polynomial
-            @.. z[i] = k[num_stages + 2] * (c_prime[i] - c[1] + 1) + k[num_stages + 1]
-            j = num_stages - 2
+            @.. z[i] = derivatives[num_stages, num_stages]
+            j = num_stages - 1
             while j > 0
-                @.. z[i] *= (c_prime[i] - c[num_stages - j] + 1)
-                @.. z[i] += k[j + 2]
+                @.. z[i] = derivatives[j, num_stages] + z[i] * (c_prime[i] - c[num_stages - j] + 1)
                 j = j - 1
             end
-            @.. z[i] *= c_prime[i]
+            @.. z[i] = z[i] * c_prime[i]
         end
         #mul!(w, TI, z)
         for i in 1:num_stages
@@ -1925,42 +2037,52 @@ end
 
         if needfactor
             cache.linsolve1 = dolinsolve(
-                integrator, linsolve1; A = W1, b = _vec(ubuff), linu = _vec(dw1)).cache
+                integrator, linsolve1; A = W1, b = _vec(ubuff), linu = _vec(dw1)
+            ).cache
         else
             cache.linsolve1 = dolinsolve(
-                integrator, linsolve1; A = nothing, b = _vec(ubuff), linu = _vec(dw1)).cache
+                integrator, linsolve1; A = nothing, b = _vec(ubuff), linu = _vec(dw1)
+            ).cache
         end
 
         if !isthreaded(alg.threading)
             for i in 1:((num_stages - 1) ÷ 2)
                 @.. cubuff[i] = complex(
                     fw[2 * i] - αdt[i] * Mw[2 * i] + βdt[i] * Mw[2 * i + 1],
-                    fw[2 * i + 1] - βdt[i] * Mw[2 * i] - αdt[i] * Mw[2 * i + 1])
+                    fw[2 * i + 1] - βdt[i] * Mw[2 * i] - αdt[i] * Mw[2 * i + 1]
+                )
                 if needfactor
-                    cache.linsolve2[i] = dolinsolve(integrator, linsolve2[i]; A = W2[i],
-                        b = _vec(cubuff[i]), linu = _vec(dw2[i])).cache
+                    cache.linsolve2[i] = dolinsolve(
+                        integrator, linsolve2[i]; A = W2[i],
+                        b = _vec(cubuff[i]), linu = _vec(dw2[i])
+                    ).cache
                 else
-                    cache.linsolve2[i] = dolinsolve(integrator, linsolve2[i]; A = nothing,
-                        b = _vec(cubuff[i]), linu = _vec(dw2[i])).cache
+                    cache.linsolve2[i] = dolinsolve(
+                        integrator, linsolve2[i]; A = nothing,
+                        b = _vec(cubuff[i]), linu = _vec(dw2[i])
+                    ).cache
                 end
             end
         else
             let integrator = integrator, linsolve2 = linsolve2, fw = fw, αdt = αdt,
-                βdt = βdt, Mw = Mw, W1 = W1, W2 = W2, cubuff = cubuff, dw2 = dw2,
-                needfactor = needfactor
+                    βdt = βdt, Mw = Mw, W1 = W1, W2 = W2, cubuff = cubuff, dw2 = dw2,
+                    needfactor = needfactor
 
                 @threaded alg.threading for i in 1:((num_stages - 1) ÷ 2)
                     @.. cubuff[i] = complex(
                         fw[2 * i] - αdt[i] * Mw[2 * i] + βdt[i] * Mw[2 * i + 1],
-                        fw[2 * i + 1] - βdt[i] * Mw[2 * i] - αdt[i] * Mw[2 * i + 1])
+                        fw[2 * i + 1] - βdt[i] * Mw[2 * i] - αdt[i] * Mw[2 * i + 1]
+                    )
                     if needfactor
                         cache.linsolve2[i] = dolinsolve(
                             integrator, linsolve2[i]; A = W2[i],
-                            b = _vec(cubuff[i]), linu = _vec(dw2[i])).cache
+                            b = _vec(cubuff[i]), linu = _vec(dw2[i])
+                        ).cache
                     else
                         cache.linsolve2[i] = dolinsolve(
                             integrator, linsolve2[i]; A = nothing,
-                            b = _vec(cubuff[i]), linu = _vec(dw2[i])).cache
+                            b = _vec(cubuff[i]), linu = _vec(dw2[i])
+                        ).cache
                     end
                 end
             end
@@ -2019,7 +2141,7 @@ end
         if η * ndw < κ && (iter > 1 || iszero(ndw) || !iszero(integrator.success_iter))
             # Newton method converges
             cache.status = η < alg.fast_convergence_cutoff ? FastConvergence :
-                           Convergence
+                Convergence
             fail_convergence = false
             break
         end
@@ -2033,7 +2155,7 @@ end
     cache.ηold = η
     cache.iter = iter
 
-    @.. u=uprev + z[num_stages]
+    @.. u = uprev + z[num_stages]
 
     step_limiter!(u, integrator, p, t + dt)
 
@@ -2045,11 +2167,13 @@ end
         end
         mass_matrix != I && (mul!(w[1], mass_matrix, tmp); copyto!(tmp, w[1]))
         #@.. ubuff=1 / γ * dt * integrator.fsalfirst + tmp
-        @.. ubuff=integrator.fsalfirst + tmp
+        @.. ubuff = integrator.fsalfirst + tmp
 
         if alg.smooth_est
-            cache.linsolve1 = dolinsolve(integrator, linsolve1; b = _vec(ubuff),
-                linu = _vec(utilde)).cache
+            cache.linsolve1 = dolinsolve(
+                integrator, linsolve1; b = _vec(ubuff),
+                linu = _vec(utilde)
+            ).cache
             integrator.stats.nsolve += 1
         end
 
@@ -2059,16 +2183,18 @@ end
         integrator.EEst = internalnorm(atmp, t)
 
         if !(integrator.EEst < oneunit(integrator.EEst)) && integrator.iter == 1 ||
-           integrator.u_modified
-            @.. utilde=uprev + utilde
+                integrator.u_modified
+            @.. utilde = uprev + utilde
             f(fsallast, utilde, p, t)
             OrdinaryDiffEqCore.increment_nf!(integrator.stats, 1)
             #@..  ubuff = 1 / γ * dt * fsallast + tmp
-            @.. ubuff=fsallast + tmp
+            @.. ubuff = fsallast + tmp
 
             if alg.smooth_est
-                cache.linsolve1 = dolinsolve(integrator, linsolve1; b = _vec(ubuff),
-                    linu = _vec(utilde)).cache
+                cache.linsolve1 = dolinsolve(
+                    integrator, linsolve1; b = _vec(ubuff),
+                    linu = _vec(utilde)
+                ).cache
                 integrator.stats.nsolve += 1
             end
 
@@ -2080,20 +2206,8 @@ end
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
-            @.. derivatives[1, 1] = z[1] / c[1]
-            for j in 2:num_stages
-                @.. derivatives[1, j] = (z[j - 1] - z[j]) / (c[j - 1] - c[j]) #first derivatives
-            end
-            for i in 2:num_stages
-                @.. derivatives[i, i] = (derivatives[i - 1, i] -
-                                         derivatives[i - 1, i - 1]) / c[i]
-                for j in (i + 1):num_stages
-                    @.. derivatives[i, j] = (derivatives[i - 1, j - 1] -
-                                             derivatives[i - 1, j]) / (c[j - i] - c[j]) #all others
-                end
-            end
             for i in 1:num_stages
-                integrator.k[i + 2] = derivatives[i, num_stages]
+                integrator.k[i + 2] .= z[i]
             end
         end
     end
