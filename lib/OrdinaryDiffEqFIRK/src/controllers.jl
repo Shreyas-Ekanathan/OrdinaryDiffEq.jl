@@ -72,3 +72,15 @@ function step_reject_controller!(
         end
     end
 end
+
+function step_reject_controller!(integrator, controller::PredictiveController, alg::RadauIIA5)
+    (; dt, success_iter, qold) = integrator
+    (; cache) = integrator
+    (; new_dt) = cache
+    if (new_dt > one(dt) * 1e-6)
+        integrator.dt = new_dt
+        cache.new_dt = -1.0  * one(dt)
+    else
+        integrator.dt = success_iter == 0 ? 0.1 * dt : dt / qold
+    end
+end
