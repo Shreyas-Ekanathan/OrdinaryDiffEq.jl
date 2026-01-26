@@ -133,6 +133,7 @@ mutable struct RadauIIA5ConstantCache{F, Tab, Tol, Dt, U, JType} <:
     cont2::U
     cont3::U
     dtprev::Dt
+    new_dt::Dt
     W_γdt::Dt
     status::NLStatus
     J::JType
@@ -148,8 +149,9 @@ function alg_cache(alg::RadauIIA5, u, rate_prototype, ::Type{uEltypeNoUnits},
 
     κ = alg.κ !== nothing ? convert(uToltype, alg.κ) : convert(uToltype, 1 // 100)
     J = false .* _vec(rate_prototype) .* _vec(rate_prototype)'
+    new_dt = -1 * one(dt)
 
-    RadauIIA5ConstantCache(uf, tab, κ, one(uToltype), 10000, u, u, u, dt, dt,
+    RadauIIA5ConstantCache(uf, tab, κ, one(uToltype), 10000, u, u, u, dt, new_dt, dt,
         Convergence, J)
 end
 
@@ -192,6 +194,7 @@ mutable struct RadauIIA5Cache{uType, cuType, uNoUnitsType, rateType, JType, W1Ty
     rtol::rTol
     atol::aTol
     dtprev::Dt
+    new_dt::Dt
     W_γdt::Dt
     status::NLStatus
     step_limiter!::StepLimiter
@@ -255,6 +258,7 @@ function alg_cache(alg::RadauIIA5, u, rate_prototype, ::Type{uEltypeNoUnits},
     #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
     #Pr = Diagonal(_vec(weight)))
 
+    new_dt = -1 * one(dt)
     rtol = reltol isa Number ? reltol : zero(reltol)
     atol = reltol isa Number ? reltol : zero(reltol)
 
@@ -264,7 +268,7 @@ function alg_cache(alg::RadauIIA5, u, rate_prototype, ::Type{uEltypeNoUnits},
         du1, fsalfirst, k, k2, k3, fw1, fw2, fw3,
         J, W1, W2,
         uf, tab, κ, one(uToltype), 10000,
-        tmp, atmp, jac_config, linsolve1, linsolve2, rtol, atol, dt, dt,
+        tmp, atmp, jac_config, linsolve1, linsolve2, rtol, atol, dt, new_dt, dt,
         Convergence, alg.step_limiter!)
 end
 
