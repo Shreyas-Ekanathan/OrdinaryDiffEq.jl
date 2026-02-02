@@ -12,12 +12,20 @@ function loopheader!(integrator)
     if integrator.iter > 0
         if (integrator.opts.adaptive && !integrator.accept_step) ||
                 integrator.force_stepfail
+            @SciMLMessage(
+                lazy"Step rejected: t = $(integrator.t), EEst = $(integrator.EEst)",
+                integrator.opts.verbose, :step_rejected
+            )
             if integrator.isout
                 integrator.dt = integrator.dt * integrator.opts.qmin
             elseif !integrator.force_stepfail
                 step_reject_controller!(integrator, integrator.alg)
             end
         else
+            @SciMLMessage(
+                lazy"Step accepted: t = $(integrator.t), dt = $(integrator.dt), EEst = $(integrator.EEst)",
+                integrator.opts.verbose, :step_accepted
+            )
             integrator.success_iter += 1
             apply_step!(integrator)
         end
@@ -219,8 +227,10 @@ function _postamble!(integrator)
     if !(integrator.sol isa DAESolution)
         resize!(integrator.sol.k, integrator.saveiter_dense)
     end
-    return if integrator.opts.progress
+    if integrator.opts.progress
+        final_progress(integrator)
     end
+    return nothing
 end
 
 function final_progress(integrator)

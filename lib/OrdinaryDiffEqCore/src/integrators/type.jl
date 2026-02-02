@@ -1,19 +1,21 @@
 mutable struct DEOptions{
         absType, relType, QT, tType, Controller, F1, F2, F3, F4, F5, F6,
         F7, tstopsType, discType, ECType, SType, MI, tcache, savecache,
-        disccache,
+        disccache, verbType,
     }
     maxiters::MI
     save_everystep::Bool
     adaptive::Bool
     abstol::absType
     reltol::relType
+    # TODO vvv remove this block as these are controller and not integrator parameters vvv
     gamma::QT
     qmax::QT
     qmin::QT
     qsteady_max::QT
     qsteady_min::QT
     qoldinit::QT
+    # TODO ^^^ remove this block as these are controller and not integrator parameters ^^^
     failfactor::QT
     dtmax::tType
     dtmin::tType
@@ -44,7 +46,7 @@ mutable struct DEOptions{
     callback::F4
     isoutofdomain::F5
     unstable_check::F7
-    verbose::Bool
+    verbose::verbType
     calck::Bool
     force_dtmin::Bool
     advance_to_tstop::Bool
@@ -56,11 +58,11 @@ end
 
 Fundamental `struct` allowing interactively stepping through the numerical solving of a differential equation.
 The full documentation is hosted here:
-[https://diffeq.sciml.ai/latest/basics/integrator/](https://diffeq.sciml.ai/latest/basics/integrator/).
+[https://docs.sciml.ai/DiffEqDocs/stable/basics/integrator/](https://docs.sciml.ai/DiffEqDocs/stable/basics/integrator/).
 This docstring describes basic functionality only!
 
 Initialize using `integrator = init(prob::ODEProblem, alg; kwargs...)`. The keyword args which are accepted are the same
-[common solver options](https://diffeq.sciml.ai/latest/basics/common_solver_opts/)
+[common solver options](https://docs.sciml.ai/DiffEqDocs/stable/basics/common_solver_opts/)
 used by `solve`.
 
 For reference, relevant fields of the `ODEIntegrator` are:
@@ -87,7 +89,7 @@ mutable struct ODEIntegrator{
         algType <: Union{OrdinaryDiffEqAlgorithm, DAEAlgorithm}, IIP,
         uType, duType, tType, pType, eigenType, EEstT, QT, tdirType,
         ksEltype, SolType, F, CacheType, O, FSALType, EventErrorType,
-        CallbackCacheType, IA, DV,
+        CallbackCacheType, IA, DV, CC,
     } <:
     SciMLBase.AbstractODEIntegrator{algType, IIP, uType, tType}
     sol::SolType
@@ -109,10 +111,13 @@ mutable struct ODEIntegrator{
     tdir::tdirType
     eigen_est::eigenType
     EEst::EEstT
+    # TODO vvv remove these
     qold::QT
     q11::QT
     erracc::QT
     dtacc::tType
+    # TODO ^^^ remove these
+    controller_cache::CC
     success_iter::Int
     iter::Int
     saveiter::Int

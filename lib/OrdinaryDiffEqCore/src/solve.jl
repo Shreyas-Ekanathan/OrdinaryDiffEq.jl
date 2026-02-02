@@ -11,6 +11,11 @@ function SciMLBase.__solve(
     return integrator.sol
 end
 
+determine_controller_datatype(u::AbstractVector{<:Number}, internalnorm, ts::Tuple{<:Number, <:Number}) = promote_type(typeof(DiffEqBase.value(internalnorm(u, ts[1]))), typeof(DiffEqBase.value(internalnorm(u, ts[2]))), eltype(DiffEqBase.value.(ts)))
+determine_controller_datatype(u, internalnorm, ts::Tuple{<:Number, <:Number}) = promote_type(typeof(DiffEqBase.value(ts[1])), typeof(DiffEqBase.value(ts[2]))) # This seems to be an assumption implicitly taken somewhere
+determine_controller_datatype(u::AbstractVector{<:Number}, internalnorm, ts::Tuple{<:Integer, <:Integer}) = promote_type(typeof(DiffEqBase.value(internalnorm(u, ts[1]))), typeof(DiffEqBase.value(internalnorm(u, ts[2]))), eltype(float.(DiffEqBase.value(ts))))
+determine_controller_datatype(u, internalnorm, ts::Tuple{<:Integer, <:Integer}) = promote_type(typeof(float(DiffEqBase.value(ts[1]))), typeof(float(DiffEqBase.value(ts[2])))) # This seems to be an assumption implicitly taken somewhere
+
 function SciMLBase.__init(
         prob::Union{
             SciMLBase.AbstractODEProblem,
@@ -35,23 +40,21 @@ function SciMLBase.__init(
             !default_linear_interpolation(prob, alg),
         calck = (callback !== nothing && callback !== CallbackSet()) ||
             (dense) || !isempty(saveat), # and no dense output
-        dt = isdiscretealg(alg) && isempty(tstops) ?
-            eltype(prob.tspan)(1) : eltype(prob.tspan)(0),
+        dt = nothing,
         dtmin = eltype(prob.tspan)(0),
         dtmax = eltype(prob.tspan)((prob.tspan[end] - prob.tspan[1])),
         force_dtmin = false,
         adaptive = anyadaptive(alg),
-        gamma = gamma_default(alg),
         abstol = nothing,
         reltol = nothing,
-        qmin = qmin_default(alg),
-        qmax = qmax_default(alg),
-        qsteady_min = qsteady_min_default(alg),
-        qsteady_max = qsteady_max_default(alg),
+        gamma = nothing,
+        qmin = nothing,
+        qmax = nothing,
+        qsteady_min = nothing,
+        qsteady_max = nothing,
         beta1 = nothing,
         beta2 = nothing,
-        qoldinit = anyadaptive(alg) ? 1 // 10^4 : 0,
-        controller = nothing,
+        qoldinit = nothing,
         fullnormalize = true,
         failfactor = 2,
         maxiters = anyadaptive(alg) ? 1000000 : typemax(Int),
@@ -59,7 +62,8 @@ function SciMLBase.__init(
         internalopnorm = opnorm,
         isoutofdomain = ODE_DEFAULT_ISOUTOFDOMAIN,
         unstable_check = ODE_DEFAULT_UNSTABLE_CHECK,
-        verbose = true,
+        verbose = Standard(),
+        controller = any((gamma, qmin, qmax, qsteady_min, qsteady_max, beta1, beta2, qoldinit) .!== nothing) ? nothing : default_controller_v7(determine_controller_datatype(prob.u0, internalnorm, prob.tspan), alg), # We have to reconstruct the old controller before breaking release.,
         timeseries_errors = true,
         dense_errors = false,
         advance_to_tstop = false,
@@ -102,14 +106,19 @@ function SciMLBase.__init(
         error("This solver is not able to use mass matrices. For compatible solvers see https://docs.sciml.ai/DiffEqDocs/stable/solvers/dae_solve/")
     end
 
+    verbose_spec = _process_verbose_param(verbose)
+
     if alg isa OrdinaryDiffEqRosenbrockAdaptiveAlgorithm &&
             # https://github.com/SciML/OrdinaryDiffEq.jl/pull/2079 fixes this for Rosenbrock23 and 32
             !only_diagonal_mass_matrix(alg) &&
             prob.f.mass_matrix isa AbstractMatrix &&
             all(isequal(0), prob.f.mass_matrix)
         # technically this should also warn for zero operators but those are hard to check for
-        if (dense || !isempty(saveat)) && verbose
-            @warn("Rosenbrock methods on equations without differential states do not bound the error on interpolations.")
+        if (dense || !isempty(saveat))
+            @SciMLMessage(
+                "Rosenbrock methods on equations without differential states do not bound the error on interpolations.",
+                verbose_spec, :rosenbrock_no_differential_states
+            )
         end
     end
 
@@ -120,7 +129,10 @@ function SciMLBase.__init(
     end
 
     if !isempty(saveat) && dense
-        @warn("Dense output is incompatible with saveat. Please use the SavingCallback from the Callback Library to mix the two behaviors.")
+        @SciMLMessage(
+            "Dense output is incompatible with saveat. Please use the SavingCallback from the Callback Library to mix the two behaviors.",
+            verbose_spec, :dense_output_saveat
+        )
     end
 
     progress && @logmsg(LogLevel(-1), progress_name, _id = progress_id, progress = 0)
@@ -139,7 +151,7 @@ function SciMLBase.__init(
                         !(alg isa DAEAlgorithm)
                 ) || !adaptive || !isadaptive(alg)
             ) &&
-                dt == tType(0) && isempty(tstops)
+                isnothing(dt) && isempty(tstops)
         ) && dt_required(alg)
         throw(ArgumentError("Fixed timestep methods require a choice of dt or choosing the tstops"))
     end
@@ -391,7 +403,7 @@ function SciMLBase.__init(
     alg_choice = _alg isa CompositeAlgorithm ? Int[] : nothing
 
     if (!adaptive || !isadaptive(_alg)) && save_everystep && tspan[2] - tspan[1] != Inf
-        if dt == 0
+        if isnothing(dt)
             steps = length(tstops)
         else
             # For fixed dt, the only time dtmin makes sense is if it's smaller than eps().
@@ -425,15 +437,6 @@ function SciMLBase.__init(
         sizehint!(ks, 2)
     end
 
-    QT, EEstT = if tTypeNoUnits <: Integer
-        typeof(qmin), typeof(qmin)
-    elseif prob isa SciMLBase.AbstractDiscreteProblem
-        # The QT fields are not used for DiscreteProblems
-        constvalue(tTypeNoUnits), constvalue(tTypeNoUnits)
-    else
-        typeof(DiffEqBase.value(internalnorm(u, t))), typeof(internalnorm(u, t))
-    end
-
     k = rateType[]
 
     if uses_uprev(_alg, adaptive) || calck
@@ -449,17 +452,23 @@ function SciMLBase.__init(
         uprev2 = uprev
     end
 
+    _dt = if isnothing(dt)
+        isdiscretealg(alg) && isempty(tstops) ?
+            eltype(prob.tspan)(1) : eltype(prob.tspan)(0)
+    else
+        dt
+    end
     if prob isa DAEProblem
         cache = alg_cache(
             _alg, du, u, res_prototype, rate_prototype, uEltypeNoUnits,
-            uBottomEltypeNoUnits, tTypeNoUnits, uprev, uprev2, f, t, dt,
-            reltol_internal, p, calck, Val(isinplace(prob))
+            uBottomEltypeNoUnits, tTypeNoUnits, uprev, uprev2, f, t, _dt,
+            reltol_internal, p, calck, Val(isinplace(prob)), verbose_spec
         )
     else
         cache = alg_cache(
             _alg, u, rate_prototype, uEltypeNoUnits, uBottomEltypeNoUnits,
-            tTypeNoUnits, uprev, uprev2, f, t, dt, reltol_internal, p, calck,
-            Val(isinplace(prob))
+            tTypeNoUnits, uprev, uprev2, f, t, _dt, reltol_internal, p, calck,
+            Val(isinplace(prob)), verbose_spec
         )
     end
 
@@ -468,15 +477,65 @@ function SciMLBase.__init(
         throw(ArgumentError("Setting both the legacy PID parameters `beta1, beta2 = $((beta1, beta2))` and the `controller = $controller` is not allowed."))
     end
 
+    # Deprecation warnings for users to break down which parameters they accidentally set.
     if (beta1 !== nothing || beta2 !== nothing)
         message = "Providing the legacy PID parameters `beta1, beta2` is deprecated. Use the keyword argument `controller` instead."
         Base.depwarn(message, :init)
         Base.depwarn(message, :solve)
     end
-
-    if controller === nothing
-        controller = default_controller(_alg, cache, qoldinit, beta1, beta2)
+    if (qmin !== nothing || qmax !== nothing)
+        message = "Providing the legacy PID parameters `qmin, qmax` is deprecated. Use the keyword argument `controller` instead."
+        Base.depwarn(message, :init)
+        Base.depwarn(message, :solve)
     end
+    if (qsteady_min !== nothing || qsteady_max !== nothing)
+        message = "Providing the legacy PID parameters `qsteady_min, qsteady_max` is deprecated. Use the keyword argument `controller` instead."
+        Base.depwarn(message, :init)
+        Base.depwarn(message, :solve)
+    end
+    if (qoldinit !== nothing)
+        message = "Providing the legacy PID parameters `qoldinit` is deprecated. Use the keyword argument `controller` instead."
+        Base.depwarn(message, :init)
+        Base.depwarn(message, :solve)
+    end
+
+    QT = determine_controller_datatype(u, internalnorm, tspan)
+
+    # The following code provides an upgrade path for users by preserving the old behavior.
+    legacy_controller_parameters = (gamma, qmin, qmax, qsteady_min, qsteady_max, beta1, beta2, qoldinit)
+    if controller === nothing # We have to reconstruct the old controller before breaking release.
+        if any(legacy_controller_parameters .== nothing)
+            gamma = convert(QT, gamma === nothing ? gamma_default(alg) : gamma)
+            qmin = convert(QT, qmin === nothing ? qmin_default(alg) : qmin)
+            qmax = convert(QT, qmax === nothing ? qmax_default(alg) : qmax)
+            qsteady_min = convert(QT, qsteady_min === nothing ? qsteady_min_default(alg) : qsteady_min)
+            qsteady_max = convert(QT, qsteady_max === nothing ? qsteady_max_default(alg) : qsteady_max)
+            qoldinit = convert(QT, qoldinit === nothing ? (anyadaptive(alg) ? 1 // 10^4 : 0) : qoldinit)
+        end
+        controller = legacy_default_controller(_alg, cache, qoldinit, beta1, beta2)
+    else # Controller has been passed
+        gamma = hasfield(typeof(controller), :gamma) ? controller.gamma : gamma_default(alg)
+        qmin = hasfield(typeof(controller), :qmin) ? controller.qmin : qmin_default(alg)
+        qmax = hasfield(typeof(controller), :qmax) ? controller.qmax : qmax_default(alg)
+        qsteady_min = hasfield(typeof(controller), :qsteady_min) ? controller.qsteady_min : qsteady_min_default(alg)
+        qsteady_max = hasfield(typeof(controller), :qsteady_max) ? controller.qsteady_max : qsteady_max_default(alg)
+        qoldinit = hasfield(typeof(controller), :qoldinit) ? controller.qoldinit : (anyadaptive(alg) ? 1 // 10^4 : 0)
+    end
+
+    EEstT = if tTypeNoUnits <: Integer
+        promote_type(typeof(qmin), typeof(qmax))
+    elseif prob isa SciMLBase.AbstractDiscreteProblem
+        constvalue(tTypeNoUnits)
+    else
+        typeof(internalnorm(u, t))
+    end
+
+    atmp = if hasfield(typeof(cache), :atmp)
+        cache.atmp
+    else
+        nothing
+    end
+    controller_cache = setup_controller_cache(_alg, atmp, controller)
 
     save_end_user = save_end
     save_end = save_end === nothing ?
@@ -485,7 +544,9 @@ function SciMLBase.__init(
 
     opts = DEOptions{
         typeof(abstol_internal), typeof(reltol_internal),
-        QT, tType, typeof(controller),
+        QT, tType,
+        # typeof(controller),
+        typeof(controller_cache),
         typeof(internalnorm), typeof(internalopnorm),
         typeof(save_end_user),
         typeof(callbacks_internal),
@@ -495,19 +556,25 @@ function SciMLBase.__init(
         typeof(d_discontinuities_internal), typeof(userdata),
         typeof(save_idxs),
         typeof(maxiters), typeof(tstops),
-        typeof(saveat), typeof(d_discontinuities),
+        typeof(saveat), typeof(d_discontinuities), typeof(verbose_spec),
     }(
         maxiters, save_everystep,
         adaptive, abstol_internal,
         reltol_internal,
-        QT(gamma), QT(qmax),
+        # TODO vvv remove this block as these are controller and not integrator parameters vvv
+        QT(gamma),
+        QT(qmax),
         QT(qmin),
         QT(qsteady_max),
         QT(qsteady_min),
         QT(qoldinit),
+        # TODO ^^^remove this block as these are controller and not integrator parameters ^^^
         QT(failfactor),
         tType(dtmax), tType(dtmin),
-        controller,
+        # TODO vvv remove this vvv
+        # controller,
+        controller_cache,
+        # TODO ^^^ remove this ^^^
         internalnorm,
         internalopnorm,
         save_idxs, tstops_internal,
@@ -527,7 +594,7 @@ function SciMLBase.__init(
         callbacks_internal,
         isoutofdomain,
         unstable_check,
-        verbose, calck, force_dtmin,
+        verbose_spec, calck, force_dtmin,
         advance_to_tstop,
         stop_at_next_tstop
     )
@@ -553,13 +620,13 @@ function SciMLBase.__init(
     # we don't want to differentiate through eigenvalue estimation
     eigen_est = inv(one(tType))
     tprev = t
-    dtcache = tType(dt)
-    dtpropose = tType(dt)
+    dtcache = tType(_dt)
+    dtpropose = tType(_dt)
     iter = 0
     kshortsize = 0
     reeval_fsal = false
     u_modified = false
-    EEst = EEstT(1)
+    EEst = oneunit(EEstT) # https://github.com/JuliaPhysics/Measurements.jl/pull/135
     just_hit_tstop = false
     isout = false
     accept_step = false
@@ -586,19 +653,24 @@ function SciMLBase.__init(
     integrator = ODEIntegrator{
         typeof(_alg), isinplace(prob), uType, typeof(du),
         tType, typeof(p),
-        typeof(eigen_est), typeof(EEst),
+        typeof(eigen_est), EEstT,
         QT, typeof(tdir), typeof(k), SolType,
         FType, cacheType,
         typeof(opts), typeof(fsalfirst),
         typeof(last_event_error), typeof(callback_cache),
         typeof(initializealg), typeof(differential_vars),
+        typeof(controller_cache),
     }(
-        sol, u, du, k, t, tType(dt), f, p,
+        sol, u, du, k, t, tType(_dt), f, p,
         uprev, uprev2, duprev, tprev,
         _alg, dtcache, dtchangeable,
         dtpropose, tdir, eigen_est, EEst,
+        # TODO vvv remove these
         QT(qoldinit), q11,
-        erracc, dtacc, success_iter,
+        erracc, dtacc,
+        # TODO ^^^ remove these
+        controller_cache,
+        success_iter,
         iter, saveiter, saveiter_dense, cache,
         callback_cache,
         kshortsize, force_stepfail,
@@ -660,7 +732,7 @@ function SciMLBase.__init(
         end
     end
 
-    handle_dt!(integrator)
+    handle_dt!(integrator, dt)
     return integrator
 end
 
@@ -706,9 +778,28 @@ function handle_dt!(integrator)
             error("Automatic dt setting has the wrong sign. Exiting. Please report this error.")
         end
         if isnan(integrator.dt)
-            if integrator.opts.verbose
-                @warn("Automatic dt set the starting dt as NaN, causing instability. Exiting.")
-            end
+            @SciMLMessage(
+                "Automatic dt set the starting dt as NaN, causing instability. Exiting.",
+                integrator.opts.verbose, :dt_NaN
+            )
+        end
+    elseif integrator.opts.adaptive && integrator.dt > zero(integrator.dt) &&
+            integrator.tdir < 0
+        integrator.dt *= integrator.tdir # Allow positive dt, but auto-convert
+    end
+end
+function handle_dt!(integrator, dt)
+    return if isnothing(dt) && iszero(integrator.dt) && integrator.opts.adaptive
+        auto_dt_reset!(integrator)
+        if sign(integrator.dt) != integrator.tdir && !iszero(integrator.dt) &&
+                !isnan(integrator.dt)
+            error("Automatic dt setting has the wrong sign. Exiting. Please report this error.")
+        end
+        if isnan(integrator.dt)
+            @SciMLMessage(
+                "Automatic dt set the starting dt as NaN, causing instability. Exiting.",
+                integrator.opts.verbose, :dt_NaN
+            )
         end
     elseif integrator.opts.adaptive && integrator.dt > zero(integrator.dt) &&
             integrator.tdir < 0
@@ -738,6 +829,25 @@ end
     return tstops_internal
 end
 
+function reinit_tstops!(::Type{T}, tstops_internal, tstops, d_discontinuities, tspan) where {T}
+    empty!(tstops_internal)
+
+    t0, tf = tspan
+    tdir = sign(tf - t0)
+    tdir_t0 = tdir * t0
+    tdir_tf = tdir * tf
+
+    for t in tstops
+        tdir_t = tdir * t
+        tdir_t0 < tdir_t ≤ tdir_tf && push!(tstops_internal, tdir_t)
+    end
+    for t in d_discontinuities
+        tdir_t = tdir * t
+        tdir_t0 < tdir_t ≤ tdir_tf && push!(tstops_internal, tdir_t)
+    end
+    return push!(tstops_internal, tdir_tf)
+end
+
 # saving time points
 function initialize_saveat(::Type{T}, saveat, tspan) where {T}
     saveat_internal = BinaryHeap{T}(DataStructures.FasterForward())
@@ -762,6 +872,27 @@ function initialize_saveat(::Type{T}, saveat, tspan) where {T}
     return saveat_internal
 end
 
+function reinit_saveat!(::Type{T}, saveat_internal, saveat, tspan) where {T}
+    empty!(saveat_internal)
+
+    t0, tf = tspan
+    tdir = sign(tf - t0)
+    tdir_t0 = tdir * t0
+    tdir_tf = tdir * tf
+
+    return if saveat isa Number
+        directional_saveat = tdir * abs(saveat)
+        for t in (t0 + directional_saveat):directional_saveat:tf
+            push!(saveat_internal, tdir * t)
+        end
+    elseif !isempty(saveat)
+        for t in saveat
+            tdir_t = tdir * t
+            tdir_t0 < tdir_t ≤ tdir_tf && push!(saveat_internal, tdir_t)
+        end
+    end
+end
+
 # discontinuities
 function initialize_d_discontinuities(::Type{T}, d_discontinuities, tspan) where {T}
     d_discontinuities_internal = BinaryHeap{T}(DataStructures.FasterForward())
@@ -775,6 +906,18 @@ function initialize_d_discontinuities(::Type{T}, d_discontinuities, tspan) where
     end
 
     return d_discontinuities_internal
+end
+
+function reinit_d_discontinuities!(::Type{T}, d_discontinuities_internal, d_discontinuities, tspan) where {T}
+    empty!(d_discontinuities_internal)
+
+    t0, tf = tspan
+    tdir = sign(tf - t0)
+
+    for t in d_discontinuities
+        push!(d_discontinuities_internal, tdir * t)
+    end
+    return
 end
 
 function initialize_callbacks!(integrator, initialize_save = true)

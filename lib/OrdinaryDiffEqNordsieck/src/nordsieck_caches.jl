@@ -23,7 +23,7 @@ function alg_cache(
         alg::AN5, u, rate_prototype, ::Type{uEltypeNoUnits},
         ::Type{uBottomEltypeNoUnits}, ::Type{tTypeNoUnits}, uprev, uprev2, f, t,
         dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     N = 5
     z = [zero(rate_prototype) for i in 1:(N + 1)]
@@ -66,7 +66,7 @@ function alg_cache(
         alg::AN5, u, rate_prototype, ::Type{uEltypeNoUnits},
         ::Type{uBottomEltypeNoUnits}, ::Type{tTypeNoUnits}, uprev, uprev2, f, t,
         dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     #################################################
     # Tsit5
@@ -141,6 +141,7 @@ mutable struct JVODEConstantCache{zType, lType, dtsType, dType, tsit5Type, etaTy
     n_wait::Int
     # `η` is `dtₙ₊₁/dtₙ`
     η::etaType
+    ηold::etaType
     ηq::etaType
     η₊₁::etaType
     η₋₁::etaType
@@ -151,7 +152,7 @@ function alg_cache(
         alg::JVODE, u, rate_prototype, ::Type{uEltypeNoUnits},
         ::Type{uBottomEltypeNoUnits}, ::Type{tTypeNoUnits}, uprev, uprev2, f, t,
         dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     N = 12
     z = [rate_prototype for i in 1:(N + 1)]
@@ -165,7 +166,7 @@ function alg_cache(
     return JVODEConstantCache(
         z, l, m,
         c_LTE₊₁, c_LTE, c_LTE₋₁, c_conv, c_𝒟, prev_𝒟,
-        dts, Δ, tsit5tab, 2, 1, 1, 2, η, η, η, η, η
+        dts, Δ, tsit5tab, 2, 1, 1, 2, η, η, η, η, η, η
     )
 end
 
@@ -217,6 +218,7 @@ mutable struct JVODECache{
     n_wait::Int
     # `η` is `dtₙ₊₁/dtₙ`
     η::etaType
+    ηold::etaType
     ηq::etaType
     η₊₁::etaType
     η₋₁::etaType
@@ -227,7 +229,7 @@ function alg_cache(
         alg::JVODE, u, rate_prototype, ::Type{uEltypeNoUnits},
         ::Type{uBottomEltypeNoUnits}, ::Type{tTypeNoUnits}, uprev, uprev2, f, t,
         dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     #################################################
     # Tsit5
@@ -279,7 +281,7 @@ function alg_cache(
         u, uprev, tmp, fsalfirst, ratetmp,
         z, l, m,
         c_LTE₊₁, c_LTE, c_LTE₋₁, c_conv, c_𝒟, prev_𝒟,
-        dts, Δ, atmp, tsit5cache, 2, 1, 1, 2, η, η, η, η, η
+        dts, Δ, atmp, tsit5cache, 2, 1, 1, 2, η, η, η, η, η, η
     )
 end
 

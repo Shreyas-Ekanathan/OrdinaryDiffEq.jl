@@ -90,6 +90,7 @@ function perform_step!(integrator, cache::AitkenNevilleCache, repeat_step = fals
         for i in range_start:max_order
             A = 2^(i - 1)
             @.. broadcast = false utilde = T[i, i] - T[i, i - 1]
+            # FIXME this should be stored in the controller cache
             atmp = calculate_residuals(
                 utilde, uprev, T[i, i], integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -214,6 +215,7 @@ function perform_step!(integrator, cache::AitkenNevilleConstantCache, repeat_ste
         for i in range_start:max_order
             A = 2^(i - 1)
             utilde = T[i, i] - T[i, i - 1]
+            # FIXME this should be stored in the controller cache
             atmp = calculate_residuals(
                 utilde, uprev, T[i, i], integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -336,9 +338,14 @@ function perform_step!(
                     # Deuflhard Stability check for initial two sequences
                     @.. broadcast = false diff2[1] = u_tmps[1] - u_tmps2[1]
                     @.. broadcast = false diff2[1] = 0.5 * (diff2[1] - diff1[1])
-                    if integrator.opts.internalnorm(diff1[1], t) <
-                            integrator.opts.internalnorm(diff2[1], t)
+                    norm_diff1 = integrator.opts.internalnorm(diff1[1], t)
+                    norm_diff2 = integrator.opts.internalnorm(diff2[1], t)
+                    if norm_diff1 < norm_diff2
                         # Divergence of iteration, overflow is possible. Force fail and start with smaller step
+                        @SciMLMessage(
+                            lazy"Deuflhard stability check failed: ||diff1|| = $(norm_diff1) < ||diff2|| = $(norm_diff2), divergence detected",
+                            integrator.opts.verbose, :stability_check
+                        )
                         integrator.force_stepfail = true
                         return
                     end
@@ -451,11 +458,11 @@ function perform_step!(
             @.. broadcast = false cache.utilde = T[i + 1, i]
 
             calculate_residuals!(
-                cache.res, integrator.u, cache.utilde,
+                cache.atmp, integrator.u, cache.utilde,
                 integrator.opts.abstol, integrator.opts.reltol,
                 integrator.opts.internalnorm, t
             )
-            integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+            integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
             cache.n_curr = i # Update cache's n_curr for stepsize_controller_internal!
             stepsize_controller_internal!(integrator, alg) # Update cache.Q
         end
@@ -531,11 +538,11 @@ function perform_step!(
                 @.. broadcast = false cache.utilde = T[n_curr + 1, n_curr]
 
                 calculate_residuals!(
-                    cache.res, integrator.u, cache.utilde,
+                    cache.atmp, integrator.u, cache.utilde,
                     integrator.opts.abstol, integrator.opts.reltol,
                     integrator.opts.internalnorm, t
                 )
-                integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+                integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
                 stepsize_controller_internal!(integrator, alg) # Update cache.Q
             else
                 # Reject the current approximation and not pass convergence monitor
@@ -688,6 +695,7 @@ function perform_step!(
         for i in (win_min - 1):win_min
             u = T[i + 1, i + 1]
             utilde = T[i + 1, i]
+            # FIXME this should be stored in the controller cache
             res = calculate_residuals(
                 u, utilde, integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -747,6 +755,7 @@ function perform_step!(
                 # Update u, integrator.EEst and cache.Q
                 u = T[n_curr + 1, n_curr + 1]
                 utilde = T[n_curr + 1, n_curr]
+                # FIXME this should be stored in the controller cache
                 res = calculate_residuals(
                     u, utilde, integrator.opts.abstol,
                     integrator.opts.reltol,
@@ -790,7 +799,7 @@ function perform_step!(
     # Unpack all information needed
     (; t, uprev, dt, f, p) = integrator
     alg = unwrap_alg(integrator, false)
-    (; n_curr, u_temp1, u_temp2, utilde, res, T, fsalfirst, k) = cache
+    (; n_curr, u_temp1, u_temp2, utilde, T, fsalfirst, k) = cache
     (; u_temp3, u_temp4, k_tmps) = cache
 
     # Coefficients for obtaining u
@@ -922,11 +931,11 @@ function perform_step!(
             @.. broadcast = false cache.utilde = extrapolation_scalars_2[i] * u_temp2
 
             calculate_residuals!(
-                cache.res, integrator.u, cache.utilde,
+                cache.atmp, integrator.u, cache.utilde,
                 integrator.opts.abstol, integrator.opts.reltol,
                 integrator.opts.internalnorm, t
             )
-            integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+            integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
             cache.n_curr = i # Update cache's n_curr for stepsize_controller_internal!
             stepsize_controller_internal!(integrator, alg) # Update cache.Q
         end
@@ -977,11 +986,11 @@ function perform_step!(
                 @.. broadcast = false cache.utilde = extrapolation_scalars_2[n_curr] * u_temp2
 
                 calculate_residuals!(
-                    cache.res, integrator.u, cache.utilde,
+                    cache.atmp, integrator.u, cache.utilde,
                     integrator.opts.abstol, integrator.opts.reltol,
                     integrator.opts.internalnorm, t
                 )
-                integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+                integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
                 stepsize_controller_internal!(integrator, alg) # Update cache.Q
             else
                 # Reject the current approximation and not pass convergence monitor
@@ -1138,6 +1147,7 @@ function perform_step!(
                     eltype(uprev).(extrapolation_weights_2[1:i, i])
                 )
             ) # and its internal counterpart
+            # FIXME this should be stored in the controller cache
             res = calculate_residuals(
                 u, utilde, integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -1201,6 +1211,7 @@ function perform_step!(
                         )
                     )
                 ) # and its internal counterpart
+                # FIXME this should be stored in the controller cache
                 res = calculate_residuals(
                     u, utilde, integrator.opts.abstol,
                     integrator.opts.reltol,
@@ -1253,7 +1264,7 @@ function perform_step!(
     # Unpack all information needed
     (; t, uprev, dt, f, p) = integrator
     alg = unwrap_alg(integrator, true)
-    (; n_curr, u_temp1, u_temp2, utilde, res, T, fsalfirst, k, diff1, diff2) = cache
+    (; n_curr, u_temp1, u_temp2, utilde, T, fsalfirst, k, diff1, diff2) = cache
     (; u_temp3, u_temp4, k_tmps) = cache
 
     # Coefficients for obtaining u
@@ -1594,11 +1605,11 @@ function perform_step!(
             @.. broadcast = false cache.utilde = extrapolation_scalars_2[i] * u_temp2
 
             calculate_residuals!(
-                cache.res, integrator.u, cache.utilde,
+                cache.atmp, integrator.u, cache.utilde,
                 integrator.opts.abstol, integrator.opts.reltol,
                 integrator.opts.internalnorm, t
             )
-            integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+            integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
             cache.n_curr = i # Update cache's n_curr for stepsize_controller_internal!
             stepsize_controller_internal!(integrator, alg) # Update cache.Q
         end
@@ -1673,11 +1684,11 @@ function perform_step!(
                 @.. broadcast = false cache.utilde = extrapolation_scalars_2[n_curr] * u_temp2
 
                 calculate_residuals!(
-                    cache.res, integrator.u, cache.utilde,
+                    cache.atmp, integrator.u, cache.utilde,
                     integrator.opts.abstol, integrator.opts.reltol,
                     integrator.opts.internalnorm, t
                 )
-                integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+                integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
                 stepsize_controller_internal!(integrator, alg) # Update cache.Q
             else
                 # Reject the current approximation and not pass convergence monitor
@@ -1921,6 +1932,7 @@ function perform_step!(
                     eltype(uprev).(extrapolation_weights_2[1:i, i])
                 )
             ) # and its internal counterpart
+            # FIXME this should be stored in the controller cache
             res = calculate_residuals(
                 u, utilde, integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -1996,6 +2008,7 @@ function perform_step!(
                         )
                     )
                 ) # and its internal counterpart
+                # FIXME this should be stored in the controller cache
                 res = calculate_residuals(
                     u, utilde, integrator.opts.abstol,
                     integrator.opts.reltol,
@@ -2049,7 +2062,7 @@ function perform_step!(
     # Unpack all information needed
     (; t, uprev, dt, f, p) = integrator
     alg = unwrap_alg(integrator, false)
-    (; n_curr, u_temp1, u_temp2, utilde, res, T, fsalfirst, k) = cache
+    (; n_curr, u_temp1, u_temp2, utilde, T, fsalfirst, k) = cache
     (; u_temp3, u_temp4, k_tmps) = cache
     # Coefficients for obtaining u
     (; extrapolation_weights, extrapolation_scalars) = cache.coefficients
@@ -2184,11 +2197,11 @@ function perform_step!(
             @.. broadcast = false cache.utilde = extrapolation_scalars_2[i] * u_temp2
 
             calculate_residuals!(
-                cache.res, integrator.u, cache.utilde,
+                cache.atmp, integrator.u, cache.utilde,
                 integrator.opts.abstol, integrator.opts.reltol,
                 integrator.opts.internalnorm, t
             )
-            integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+            integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
             cache.n_curr = i # Update cache's n_curr for stepsize_controller_internal!
             stepsize_controller_internal!(integrator, alg) # Update cache.Q
         end
@@ -2243,11 +2256,11 @@ function perform_step!(
                 @.. broadcast = false cache.utilde = extrapolation_scalars_2[n_curr] * u_temp2
 
                 calculate_residuals!(
-                    cache.res, integrator.u, cache.utilde,
+                    cache.atmp, integrator.u, cache.utilde,
                     integrator.opts.abstol, integrator.opts.reltol,
                     integrator.opts.internalnorm, t
                 )
-                integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+                integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
                 stepsize_controller_internal!(integrator, alg) # Update cache.Q
             else
                 # Reject the current approximation and not pass convergence monitor
@@ -2404,6 +2417,7 @@ function perform_step!(
                     eltype(uprev).(extrapolation_weights_2[1:i, i])
                 )
             ) # and its internal counterpart
+            # FIXME this should be stored in the controller cache
             res = calculate_residuals(
                 u, utilde, integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -2471,6 +2485,7 @@ function perform_step!(
                         )
                     )
                 ) # and its internal counterpart
+                # FIXME this should be stored in the controller cache
                 res = calculate_residuals(
                     u, utilde, integrator.opts.abstol,
                     integrator.opts.reltol,
@@ -2742,6 +2757,7 @@ function perform_step!(
                     eltype(uprev).(extrapolation_weights_2[1:i, i])
                 )
             ) # and its internal counterpart
+            # FIXME this should be stored in the controller cache
             res = calculate_residuals(
                 u, utilde, integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -2823,6 +2839,7 @@ function perform_step!(
                         )
                     )
                 ) # and its internal counterpart
+                # FIXME this should be stored in the controller cache
                 res = calculate_residuals(
                     u, utilde, integrator.opts.abstol,
                     integrator.opts.reltol,
@@ -2875,7 +2892,7 @@ function perform_step!(
     # Unpack all information needed
     (; t, uprev, dt, f, p) = integrator
     alg = unwrap_alg(integrator, true)
-    (; n_curr, u_temp1, u_temp2, utilde, res, T, fsalfirst, k, diff1, diff2) = cache
+    (; n_curr, u_temp1, u_temp2, utilde, T, fsalfirst, k, diff1, diff2) = cache
     (; u_temp3, u_temp4, k_tmps) = cache
     # Coefficients for obtaining u
     (; extrapolation_weights, extrapolation_scalars) = cache.coefficients
@@ -3209,11 +3226,11 @@ function perform_step!(
             @.. broadcast = false cache.utilde = extrapolation_scalars_2[i] * u_temp2
 
             calculate_residuals!(
-                cache.res, integrator.u, cache.utilde,
+                cache.atmp, integrator.u, cache.utilde,
                 integrator.opts.abstol, integrator.opts.reltol,
                 integrator.opts.internalnorm, t
             )
-            integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+            integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
             cache.n_curr = i # Update cache's n_curr for stepsize_controller_internal!
             stepsize_controller_internal!(integrator, alg) # Update cache.Q
         end
@@ -3307,11 +3324,11 @@ function perform_step!(
                 @.. broadcast = false cache.utilde = extrapolation_scalars_2[n_curr] * u_temp2
 
                 calculate_residuals!(
-                    cache.res, integrator.u, cache.utilde,
+                    cache.atmp, integrator.u, cache.utilde,
                     integrator.opts.abstol, integrator.opts.reltol,
                     integrator.opts.internalnorm, t
                 )
-                integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+                integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
                 stepsize_controller_internal!(integrator, alg) # Update cache.Q
             else
                 # Reject the current approximation and not pass convergence monitor
@@ -3562,6 +3579,7 @@ function perform_step!(
                     eltype(uprev).(extrapolation_weights_2[1:i, i])
                 )
             ) # and its internal counterpart
+            # FIXME this should be stored in the controller cache
             res = calculate_residuals(
                 u, utilde, integrator.opts.abstol,
                 integrator.opts.reltol, integrator.opts.internalnorm,
@@ -3641,6 +3659,7 @@ function perform_step!(
                         )
                     )
                 ) # and its internal counterpart
+                # FIXME this should be stored in the controller cache
                 res = calculate_residuals(
                     u, utilde, integrator.opts.abstol,
                     integrator.opts.reltol,
@@ -3693,7 +3712,7 @@ function perform_step!(
     # Unpack all information needed
     (; t, uprev, dt, f, p) = integrator
     alg = unwrap_alg(integrator, true)
-    (; n_curr, u_temp1, u_temp2, utilde, res, T, fsalfirst, k, diff1, diff2) = cache
+    (; n_curr, u_temp1, u_temp2, utilde, T, fsalfirst, k, diff1, diff2) = cache
     (; u_temp3, u_temp4, k_tmps) = cache
     # Coefficients for obtaining u
     (; extrapolation_weights, extrapolation_scalars) = cache.coefficients
@@ -4047,11 +4066,11 @@ function perform_step!(
             @.. broadcast = false cache.utilde = extrapolation_scalars_2[i] * u_temp2
 
             calculate_residuals!(
-                cache.res, integrator.u, cache.utilde,
+                cache.atmp, integrator.u, cache.utilde,
                 integrator.opts.abstol, integrator.opts.reltol,
                 integrator.opts.internalnorm, t
             )
-            integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+            integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
             cache.n_curr = i # Update cache's n_curr for stepsize_controller_internal!
             stepsize_controller_internal!(integrator, alg) # Update cache.Q
         end
@@ -4143,11 +4162,11 @@ function perform_step!(
                 @.. broadcast = false cache.utilde = extrapolation_scalars_2[n_curr] * u_temp2
 
                 calculate_residuals!(
-                    cache.res, integrator.u, cache.utilde,
+                    cache.atmp, integrator.u, cache.utilde,
                     integrator.opts.abstol, integrator.opts.reltol,
                     integrator.opts.internalnorm, t
                 )
-                integrator.EEst = integrator.opts.internalnorm(cache.res, t)
+                integrator.EEst = integrator.opts.internalnorm(cache.atmp, t)
                 stepsize_controller_internal!(integrator, alg) # Update cache.Q
             else
                 # Reject the current approximation and not pass convergence monitor

@@ -45,7 +45,7 @@ function alg_cache(
         alg::AitkenNeville, u, rate_prototype, ::Type{uEltypeNoUnits},
         ::Type{uBottomEltypeNoUnits}, ::Type{tTypeNoUnits}, uprev, uprev2, f, t,
         dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     tmp = zero(u)
     utilde = zero(u)
@@ -85,7 +85,7 @@ function alg_cache(
         alg::AitkenNeville, u, rate_prototype, ::Type{uEltypeNoUnits},
         ::Type{uBottomEltypeNoUnits}, ::Type{tTypeNoUnits}, uprev, uprev2, f, t,
         dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     dtpropose = zero(dt)
     cur_order = max(alg.init_order, alg.min_order)
@@ -132,7 +132,6 @@ end
     n_curr::Int # Storage for the current extrapolation order
     n_old::Int # Storage for the extrapolation order n_curr before perform_step! changes the latter
     sigma::Rational{Int} # Parameter for order selection
-    res::uNoUnitsType # Storage for the scaled residual of u and utilde
 
     #Stepsizing caches
     work::Array{QType, 1}
@@ -173,7 +172,7 @@ function alg_cache(
         alg::ImplicitEulerExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     dtpropose = zero(dt)
     #cur_order = max(alg.init_order, alg.min_order)
@@ -215,7 +214,7 @@ function alg_cache(
         alg::ImplicitEulerExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     u_tmp = zero(u)
     u_tmps = Array{typeof(u_tmp), 1}(undef, get_thread_count(alg))
@@ -287,7 +286,7 @@ function alg_cache(
 
     linprob = LinearProblem(W[1], _vec(linsolve_tmps[1]); u0 = _vec(k_tmps[1]))
     linsolve1 = init(
-        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
     )
     #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
     #Pr = Diagonal(_vec(weight)))
@@ -298,19 +297,18 @@ function alg_cache(
         linprob = LinearProblem(W[i], _vec(linsolve_tmps[i]); u0 = _vec(k_tmps[i]))
         linsolve[i] = init(
             linprob, alg.linsolve,
-            alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+            alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
         )
         #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
         #Pr = Diagonal(_vec(weight)))
     end
 
-    res = uEltypeNoUnits.(zero(u))
     grad_config = build_grad_config(alg, f, tf, du1, t)
     jac_config = build_jac_config(alg, f, uf, du1, uprev, u, du1, du2)
     sequence = generate_sequence(constvalue(uBottomEltypeNoUnits), alg)
     cc = alg_cache(
         alg, u, rate_prototype, uEltypeNoUnits, uBottomEltypeNoUnits,
-        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false)
+        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false), verbose
     )
     diff1 = Array{typeof(u), 1}(undef, get_thread_count(alg))
     diff2 = Array{typeof(u), 1}(undef, get_thread_count(alg))
@@ -323,7 +321,7 @@ function alg_cache(
         dtpropose, T, A, step_no,
         du1, du2, J, W, tf, uf, linsolve_tmps, linsolve,
         jac_config, grad_config, sequence, cc.stage_number,
-        cc.Q, cc.n_curr, cc.n_old, cc.sigma, res, cc.work,
+        cc.Q, cc.n_curr, cc.n_old, cc.sigma, cc.work,
         cc.dt_new, diff1, diff2
     )
 end
@@ -1024,7 +1022,7 @@ function alg_cache(
         alg::ExtrapolationMidpointDeuflhard, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     QType = tTypeNoUnits <: Integer ? typeof(qmin_default(alg)) : tTypeNoUnits # Cf. SciMLBase.__init in solve.jl
@@ -1063,7 +1061,7 @@ end
     u_temp4::Array{uType, 1}
     tmp::uType # for get_tmp_cache()
     T::Array{uType, 1}  # Storage for the internal discretisations obtained by the explicit midpoint rule
-    res::uNoUnitsType # Storage for the scaled residual of u and utilde
+    atmp::uNoUnitsType # Storage for the scaled residual of u and utilde
 
     fsalfirst::rateType
     k::rateType
@@ -1081,7 +1079,7 @@ function alg_cache(
         alg::ExtrapolationMidpointDeuflhard, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     utilde = zero(u)
@@ -1112,7 +1110,7 @@ function alg_cache(
     cc = alg_cache(
         alg::ExtrapolationMidpointDeuflhard, u, rate_prototype, uEltypeNoUnits,
         uBottomEltypeNoUnits, tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p,
-        calck, Val(false)
+        calck, Val(false), verbose
     )
     # Initialize cache
     return ExtrapolationMidpointDeuflhardCache(
@@ -1157,7 +1155,7 @@ end
     u_temp4::Array{uType, 1}
     tmp::uType # for get_tmp_cache()
     T::Array{uType, 1}  # Storage for the internal discretisations obtained by the explicit midpoint rule
-    res::uNoUnitsType # Storage for the scaled residual of u and utilde
+    atmp::uNoUnitsType # Storage for the scaled residual of u and utilde
 
     fsalfirst::rateType
     k::rateType
@@ -1189,7 +1187,7 @@ function alg_cache(
         alg::ImplicitDeuflhardExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     QType = tTypeNoUnits <: Integer ? typeof(qmin_default(alg)) : tTypeNoUnits # Cf. SciMLBase.__init in solve.jl
@@ -1235,7 +1233,7 @@ function alg_cache(
         alg::ImplicitDeuflhardExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     utilde = zero(u)
     u_temp1 = zero(u)
@@ -1265,7 +1263,7 @@ function alg_cache(
     cc = alg_cache(
         alg::ImplicitDeuflhardExtrapolation, u, rate_prototype, uEltypeNoUnits,
         uBottomEltypeNoUnits, tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p,
-        calck, Val(false)
+        calck, Val(false), verbose
     )
 
     du1 = zero(rate_prototype)
@@ -1299,7 +1297,7 @@ function alg_cache(
 
     linprob = LinearProblem(W[1], _vec(linsolve_tmps[1]); u0 = _vec(k_tmps[1]))
     linsolve1 = init(
-        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
     )
     #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
     #Pr = Diagonal(_vec(weight)))
@@ -1310,7 +1308,7 @@ function alg_cache(
         linprob = LinearProblem(W[i], _vec(linsolve_tmps[i]); u0 = _vec(k_tmps[i]))
         linsolve[i] = init(
             linprob, alg.linsolve,
-            alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+            alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
         )
         #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
         #Pr = Diagonal(_vec(weight)))
@@ -1358,7 +1356,7 @@ function alg_cache(
         alg::ExtrapolationMidpointHairerWanner, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     QType = tTypeNoUnits <: Integer ? typeof(qmin_default(alg)) : tTypeNoUnits # Cf. SciMLBase.__init in solve.jl
@@ -1402,7 +1400,7 @@ end
     u_temp4::Array{uType, 1}
     tmp::uType # for get_tmp_cache()
     T::Array{uType, 1}  # Storage for the internal discretisations obtained by the explicit midpoint rule
-    res::uNoUnitsType # Storage for the scaled residual of u and utilde
+    atmp::uNoUnitsType # Storage for the scaled residual of u and utilde
 
     fsalfirst::rateType
     k::rateType
@@ -1425,7 +1423,7 @@ function alg_cache(
         alg::ExtrapolationMidpointHairerWanner, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     utilde = zero(u)
@@ -1453,7 +1451,7 @@ function alg_cache(
 
     cc = alg_cache(
         alg, u, rate_prototype, uEltypeNoUnits, uBottomEltypeNoUnits,
-        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false)
+        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false), verbose
     )
 
     # Initialize the cache
@@ -1493,7 +1491,7 @@ function alg_cache(
         alg::ImplicitHairerWannerExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     QType = tTypeNoUnits <: Integer ? typeof(qmin_default(alg)) : tTypeNoUnits # Cf. SciMLBase.__init in solve.jl
@@ -1559,7 +1557,7 @@ end
     u_temp4::Array{uType, 1}
     tmp::uType # for get_tmp_cache()
     T::Array{uType, 1}  # Storage for the internal discretisations obtained by the explicit midpoint rule
-    res::uNoUnitsType # Storage for the scaled residual of u and utilde
+    atmp::uNoUnitsType # Storage for the scaled residual of u and utilde
 
     fsalfirst::rateType
     k::rateType
@@ -1596,7 +1594,7 @@ function alg_cache(
         alg::ImplicitHairerWannerExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     utilde = zero(u)
@@ -1624,7 +1622,7 @@ function alg_cache(
 
     cc = alg_cache(
         alg, u, rate_prototype, uEltypeNoUnits, uBottomEltypeNoUnits,
-        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false)
+        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false), verbose
     )
 
     du1 = zero(rate_prototype)
@@ -1659,7 +1657,7 @@ function alg_cache(
 
     linprob = LinearProblem(W[1], _vec(linsolve_tmps[1]); u0 = _vec(k_tmps[1]))
     linsolve1 = init(
-        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
     )
     #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
     #Pr = Diagonal(_vec(weight)))
@@ -1670,7 +1668,7 @@ function alg_cache(
         linprob = LinearProblem(W[i], _vec(linsolve_tmps[i]); u0 = _vec(k_tmps[i]))
         linsolve[i] = init(
             linprob, alg.linsolve,
-            alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+            alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
         )
         #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
         #Pr = Diagonal(_vec(weight)))
@@ -1725,7 +1723,7 @@ function alg_cache(
         alg::ImplicitEulerBarycentricExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{false}
+        ::Val{false}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     QType = tTypeNoUnits <: Integer ? typeof(qmin_default(alg)) : tTypeNoUnits # Cf. SciMLBase.__init in solve.jl
@@ -1775,7 +1773,7 @@ end
     u_temp4::Array{uType, 1}
     tmp::uType # for get_tmp_cache()
     T::Array{uType, 1}  # Storage for the internal discretisations obtained by the explicit midpoint rule
-    res::uNoUnitsType # Storage for the scaled residual of u and utilde
+    atmp::uNoUnitsType # Storage for the scaled residual of u and utilde
 
     fsalfirst::rateType
     k::rateType
@@ -1811,7 +1809,7 @@ function alg_cache(
         alg::ImplicitEulerBarycentricExtrapolation, u, rate_prototype,
         ::Type{uEltypeNoUnits}, ::Type{uBottomEltypeNoUnits},
         ::Type{tTypeNoUnits}, uprev, uprev2, f, t, dt, reltol, p, calck,
-        ::Val{true}
+        ::Val{true}, verbose
     ) where {uEltypeNoUnits, uBottomEltypeNoUnits, tTypeNoUnits}
     # Initialize cache's members
     utilde = zero(u)
@@ -1839,7 +1837,7 @@ function alg_cache(
 
     cc = alg_cache(
         alg, u, rate_prototype, uEltypeNoUnits, uBottomEltypeNoUnits,
-        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false)
+        tTypeNoUnits, uprev, uprev2, f, t, dt, reltol, p, calck, Val(false), verbose
     )
 
     du1 = zero(rate_prototype)
@@ -1874,7 +1872,7 @@ function alg_cache(
 
     linprob = LinearProblem(W[1], _vec(linsolve_tmps[1]); u0 = _vec(k_tmps[1]))
     linsolve1 = init(
-        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+        linprob, alg.linsolve, alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
     )
     #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
     #Pr = Diagonal(_vec(weight)))
@@ -1885,7 +1883,7 @@ function alg_cache(
         linprob = LinearProblem(W[i], _vec(linsolve_tmps[i]); u0 = _vec(k_tmps[i]))
         linsolve[i] = init(
             linprob, alg.linsolve,
-            alias = LinearAliasSpecifier(alias_A = true, alias_b = true)
+            alias = LinearAliasSpecifier(alias_A = true, alias_b = true), verbose = verbose.linear_verbosity
         )
         #Pl = LinearSolve.InvPreconditioner(Diagonal(_vec(weight))),
         #Pr = Diagonal(_vec(weight)))

@@ -1,7 +1,7 @@
 name = "OrdinaryDiffEqSDIRK"
 uuid = "2d112036-d095-4a1e-ab9a-08536f3ecdbf"
 authors = ["ParamThakkar123 <paramthakkar864@gmail.com>"]
-version = "1.10.0"
+version = "1.12.0"
 
 [deps]
 FastBroadcast = "7034ab61-46d4-4ed7-9d0f-46aef9175898"
@@ -20,6 +20,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [extras]
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 DiffEqDevTools = "f3b72e0c-5b89-59e1-b016-84e28bfd966d"
@@ -28,16 +29,17 @@ AllocCheck = "9b6a8646-10ed-4001-bbdc-1d2f46dfbb1a"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 
 [compat]
+Pkg = "1"
 Test = "<0.0.1, 1"
 FastBroadcast = "0.3"
 Random = "<0.0.1, 1"
 DiffEqDevTools = "2.44.4"
 MuladdMacro = "0.2"
 LinearAlgebra = "1.10"
-OrdinaryDiffEqDifferentiation = "1.12.0"
+OrdinaryDiffEqDifferentiation = "2"
 TruncatedStacktraces = "1.4"
-SciMLBase = "2.99"
-OrdinaryDiffEqCore = "2"
+SciMLBase = "2.116"
+OrdinaryDiffEqCore = "3"
 Aqua = "0.8.11"
 MacroTools = "0.5.6"
 julia = "1.10"
@@ -46,12 +48,12 @@ ADTypes = "1.16"
 RecursiveArrayTools = "3.36"
 OrdinaryDiffEqNonlinearSolve = "1.16.0"
 AllocCheck = "0.2"
-DiffEqBase = "6.176"
+DiffEqBase = "6.194"
 Reexport = "1.2"
 SafeTestsets = "0.1.0"
 
 [targets]
-test = ["DiffEqDevTools", "Random", "SafeTestsets", "Test", "JET", "Aqua", "AllocCheck"]
+test = ["DiffEqDevTools", "Random", "SafeTestsets", "Test", "Pkg"]
 
 [sources.OrdinaryDiffEqDifferentiation]
 path = "../OrdinaryDiffEqDifferentiation"

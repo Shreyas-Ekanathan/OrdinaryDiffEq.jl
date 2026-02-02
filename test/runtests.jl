@@ -23,8 +23,8 @@ function activate_odeinterface_env()
     return Pkg.instantiate()
 end
 
-function activate_enzyme_env()
-    Pkg.activate("enzyme")
+function activate_ad_env()
+    Pkg.activate("ad")
     Pkg.develop(PackageSpec(path = dirname(@__DIR__)))
     return Pkg.instantiate()
 end
@@ -38,12 +38,23 @@ end
 #Start Test Script
 
 @time begin
-    if contains(GROUP, "OrdinaryDiffEq") || GROUP == "ImplicitDiscreteSolve" || GROUP == "SimpleImplicitDiscreteSolve"
-        Pkg.activate(joinpath(dirname(@__DIR__), "lib", GROUP))
-        Pkg.test(GROUP, julia_args = ["--check-bounds=auto", "--compiled-modules=yes", "--depwarn=yes"], force_latest_compatible_version = false, allow_reresolve = true)
+    # Handle sublibrary QA groups (e.g., OrdinaryDiffEqBDF_QA)
+    is_qa_group = endswith(GROUP, "_QA")
+    base_group = is_qa_group ? GROUP[1:(end - 3)] : GROUP
+
+    if contains(base_group, "OrdinaryDiffEq") || base_group == "ImplicitDiscreteSolve" || base_group == "SimpleImplicitDiscreteSolve"
+        Pkg.activate(joinpath(dirname(@__DIR__), "lib", base_group))
+        # Set QA_ONLY env var to tell sublibrary tests whether to run only QA tests
+        withenv("ODEDIFFEQ_TEST_GROUP" => (is_qa_group ? "QA" : "FUNCTIONAL")) do
+            Pkg.test(base_group, julia_args = ["--check-bounds=auto", "--compiled-modules=yes", "--depwarn=yes"], force_latest_compatible_version = false, allow_reresolve = true)
+        end
     elseif GROUP == "All" || GROUP == "InterfaceI" || GROUP == "Interface"
         @time @safetestset "Discrete Algorithm Tests" include("interface/discrete_algorithm_test.jl")
-        @time @safetestset "Null u0 Callbacks Tests" include("interface/null_u0_callbacks_test.jl")
+        # Skip on Julia LTS (oneunit(Type{Any}) not defined) and pre-release (stalls)
+        # See: https://github.com/SciML/OrdinaryDiffEq.jl/issues/2979
+        if VERSION >= v"1.11" && isempty(VERSION.prerelease)
+            @time @safetestset "Null u0 Callbacks Tests" include("interface/null_u0_callbacks_test.jl")
+        end
         @time @safetestset "Tstops Tests" include("interface/ode_tstops_tests.jl")
         @time @safetestset "Backwards Tests" include("interface/ode_backwards_test.jl")
         @time @safetestset "Initdt Tests" include("interface/ode_initdt_tests.jl")
@@ -92,6 +103,7 @@ end
         @time @safetestset "No Jac Tests" include("interface/nojac.jl")
         @time @safetestset "Units Tests" include("interface/units_tests.jl")
         @time @safetestset "Non-Full Diagonal Sparsity Tests" include("interface/nonfulldiagonal_sparse.jl")
+        @time @safetestset "DEVerbosity Tests" include("interface/verbosity.jl")
     end
 
     if !is_APPVEYOR && (GROUP == "All" || GROUP == "InterfaceIV" || GROUP == "Interface")
@@ -104,7 +116,6 @@ end
 
     if !is_APPVEYOR && (GROUP == "All" || GROUP == "InterfaceV" || GROUP == "Interface")
         @time @safetestset "Interpolation Derivative Error Tests" include("interface/interpolation_derivative_error_tests.jl")
-        @time @safetestset "AD Tests" include("interface/ad_tests.jl")
         @time @safetestset "GPU AutoDiff Interface Tests" include("interface/gpu_autodiff_interface_tests.jl")
         @time @safetestset "DAE Initialization Tests" include("interface/dae_initialization_tests.jl")
     end
@@ -157,7 +168,8 @@ end
         @time @safetestset "Split Methods Tests" include("algconvergence/split_methods_tests.jl")
     end
 
-    if !is_APPVEYOR && GROUP == "ModelingToolkit"
+    # Don't run ModelingToolkit tests on prerelease
+    if !is_APPVEYOR && GROUP == "ModelingToolkit" && isempty(VERSION.prerelease)
         activate_modelingtoolkit_env()
         @time @safetestset "NLStep Tests" include("modelingtoolkit/nlstep_tests.jl")
         @time @safetestset "Jacobian Tests" include("modelingtoolkit/jacobian_tests.jl")
@@ -169,18 +181,17 @@ end
         activate_downstream_env()
         @time @safetestset "DelayDiffEq Tests" include("downstream/delaydiffeq.jl")
         @time @safetestset "Measurements Tests" include("downstream/measurements.jl")
-        if VERSION >= v"1.11" && isempty(VERSION.prerelease)
-            @time @safetestset "Mooncake Tests" include("downstream/mooncake.jl")
-        end
         @time @safetestset "Sparse Diff Tests" include("downstream/sparsediff_tests.jl")
         @time @safetestset "Time derivative Tests" include("downstream/time_derivative_test.jl")
     end
 
-    # Don't run Enzyme tests on prerelease
-    if !is_APPVEYOR && GROUP == "Enzyme" && isempty(VERSION.prerelease)
-        activate_enzyme_env()
-        @time @safetestset "Autodiff Events Tests" include("enzyme/autodiff_events.jl")
-        @time @safetestset "Discrete Adjoint Tests" include("enzyme/discrete_adjoints.jl")
+    # AD tests - Enzyme/Zygote only on Julia <= 1.11 (see https://github.com/EnzymeAD/Enzyme.jl/issues/2699)
+    # Mooncake works on all Julia versions
+    if !is_APPVEYOR && GROUP == "AD"
+        activate_ad_env()
+        @time @safetestset "AD Tests" include("ad/ad_tests.jl")
+        @time @safetestset "Autodiff Events Tests" include("ad/autodiff_events.jl")
+        @time @safetestset "Discrete Adjoint Tests" include("ad/discrete_adjoints.jl")
     end
 
     # Don't run ODEInterface tests on prerelease

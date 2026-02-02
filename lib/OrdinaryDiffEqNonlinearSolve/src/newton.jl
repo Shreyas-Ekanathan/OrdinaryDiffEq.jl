@@ -51,8 +51,9 @@ function initialize!(
     else
         nlp_params = (tmp, γ, α, tstep, invγdt, method, p, dt, f)
     end
+
     new_prob = remake(cache.prob, p = nlp_params, u0 = z)
-    cache.cache = init(new_prob, alg.alg)
+    cache.cache = init(new_prob, alg.alg; verbose = nlsolver.cache.cache.verbose)
     return nothing
 end
 
@@ -262,7 +263,7 @@ end
         update_coefficients!(W, ustep, p, tstep)
     elseif W isa AbstractSciMLOperator
         # logic for generic AbstractSciMLOperator does not yet support partial state updates, so provide full state
-        update_coefficients!(W, ustep, p, tstep; dtgamma = γW, transform = true)
+        update_coefficients!(W, ustep, p, tstep; gamma = γW, transform = true)
     end
 
     if integrator.opts.adaptive
