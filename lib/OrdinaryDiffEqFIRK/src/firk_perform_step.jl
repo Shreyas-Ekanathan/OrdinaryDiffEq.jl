@@ -667,13 +667,16 @@ end
             integrator.EEst = internalnorm(atmp, t)
         end
     end
-
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
             integrator.k[3] = z1
             integrator.k[4] = z2
             integrator.k[5] = z3
+        end
+    else
+        if alg.is_disco
+            set_discontinuity(u, uprev, integrator, cache)
         end
     end
 
@@ -945,12 +948,17 @@ end
         end
     end
 
+    local breakpointθ = -1.0
     if integrator.EEst <= oneunit(integrator.EEst)
         cache.dtprev = dt
         if alg.extrapolant != :constant
             integrator.k[3] .= z1
             integrator.k[4] .= z2
             integrator.k[5] .= z3
+        end
+    else
+        if alg.is_disco
+            set_discontinuity(u, uprev, integrator, cache)
         end
     end
 
@@ -2241,3 +2249,4 @@ end
     integrator.stats.nf += 1
     return
 end
+

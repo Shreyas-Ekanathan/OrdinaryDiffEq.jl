@@ -32,6 +32,7 @@ function SciMLBase.__init(
         save_everystep = isempty(saveat),
         save_on = true,
         save_discretes = true,
+        disco_dt_set = false,
         save_start = save_everystep || isempty(saveat) ||
             saveat isa Number || prob.tspan[1] in saveat,
         save_end = nothing,
@@ -63,7 +64,7 @@ function SciMLBase.__init(
         isoutofdomain = ODE_DEFAULT_ISOUTOFDOMAIN,
         unstable_check = ODE_DEFAULT_UNSTABLE_CHECK,
         verbose = Standard(),
-        controller = nothing,
+        controller = any((gamma, qmin, qmax, qsteady_min, qsteady_max, beta1, beta2, qoldinit) .!== nothing) ? nothing : default_controller_v7(determine_controller_datatype(prob.u0, internalnorm, prob.tspan), alg), # We have to reconstruct the old controller before breaking release.,
         timeseries_errors = true,
         dense_errors = false,
         advance_to_tstop = false,
@@ -513,7 +514,7 @@ function SciMLBase.__init(
             qsteady_max = convert(QT, qsteady_max === nothing ? qsteady_max_default(alg) : qsteady_max)
             qoldinit = convert(QT, qoldinit === nothing ? (anyadaptive(alg) ? 1 // 10^4 : 0) : qoldinit)
         end
-        controller = default_controller(_alg, cache, qoldinit, beta1, beta2)
+        controller = legacy_default_controller(_alg, cache, qoldinit, beta1, beta2)
     else # Controller has been passed
         gamma = hasfield(typeof(controller), :gamma) ? controller.gamma : gamma_default(alg)
         qmin = hasfield(typeof(controller), :qmin) ? controller.qmin : qmin_default(alg)
@@ -667,7 +668,7 @@ function SciMLBase.__init(
         sol, u, du, k, t, tType(_dt), f, p,
         uprev, uprev2, duprev, tprev,
         _alg, dtcache, dtchangeable,
-        dtpropose, tdir, eigen_est, EEst,
+        dtpropose, disco_dt_set, tdir, eigen_est, EEst,
         # TODO vvv remove these
         QT(qoldinit), q11,
         erracc, dtacc,

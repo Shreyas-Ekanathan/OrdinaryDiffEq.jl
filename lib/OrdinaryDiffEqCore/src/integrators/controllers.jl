@@ -948,6 +948,12 @@ end
 function step_reject_controller!(integrator, cache::PredictiveControllerCache, alg)
     (; dt, success_iter) = integrator
     (; qold) = cache
+    
+    if (integrator.disco_dt_set) 
+        println("using fixed dt from discontinuity handling")
+        integrator.disco_dt_set = false
+        return integrator.dt 
+    end
     return integrator.dt = success_iter == 0 ? 0.1 * dt : dt / qold
 end
 
@@ -1001,13 +1007,6 @@ end
 @inline step_accept_controller!(integrator, controller::DummyController, alg, q) = default_step_accept_controller!(integrator, integrator.cache, alg, q)
 @inline step_reject_controller!(integrator, controller::DummyController, alg) = default_step_reject_controller!(integrator, integrator.cache, alg)
 @inline post_newton_controller!(integrator, controller::DummyController, alg) = default_post_newton_controller!(integrator, integrator.cache, alg)
-
-# TODO remove this for OrdinaryDiffEq v7 . Right now the integrator is expected to carry a controller. Therefore algorithms coming with a custom controller default to a DummyController too.
-# Instead of scattering this function across all subpackages we add the default dispatch here.
-function default_post_newton_controller!(integrator, cache, alg)
-    integrator.dt = integrator.dt / integrator.opts.failfactor
-    return nothing
-end
 
 # Default alg with dummy controller
 function default_stepsize_controller!(integrator, cache::DefaultCache, alg)

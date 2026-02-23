@@ -162,10 +162,8 @@ function alg_cache(
     κ = alg.κ !== nothing ? convert(uToltype, alg.κ) : convert(uToltype, 1 // 100)
     J = false .* _vec(rate_prototype) .* _vec(rate_prototype)'
 
-    return RadauIIA5ConstantCache(
-        uf, tab, κ, one(uToltype), 10000, u, u, u, dt, dt,
-        Convergence, J
-    )
+    RadauIIA5ConstantCache(uf, tab, κ, one(uToltype), 10000, u, u, u, dt, dt,
+        Convergence, J)
 end
 
 mutable struct RadauIIA5Cache{
@@ -289,8 +287,7 @@ function alg_cache(
         J, W1, W2,
         uf, tab, κ, one(uToltype), 10000,
         tmp, atmp, jac_config, linsolve1, linsolve2, rtol, atol, dt, dt,
-        Convergence, alg.step_limiter!
-    )
+        Convergence, alg.step_limiter!)
 end
 
 mutable struct RadauIIA9ConstantCache{F, Tab, Tol, Dt, U, JType} <:
